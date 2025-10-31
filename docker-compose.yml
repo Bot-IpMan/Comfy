@@ -1,7 +1,7 @@
 services:
   comfyui:
-    # Офіційний образ ComfyUI із підтримкою CUDA
-    image: ghcr.io/comfyanonymous/comfyui:latest
+    # Образ можна змінити через змінну COMFYUI_IMAGE у файлі .env
+    image: ${COMFYUI_IMAGE:-ghcr.io/comfyanonymous/comfyui:latest}
     container_name: comfyui
     restart: unless-stopped
 
@@ -48,7 +48,7 @@ services:
 
   # RIFE для інтерполяції (8fps -> 24fps)
   rife:
-    image: ghcr.io/k4yt3x/video2x:latest
+    image: ${RIFE_IMAGE:-ghcr.io/k4yt3x/video2x:latest}
     container_name: rife
     restart: unless-stopped
     command: sleep infinity
