@@ -1,0 +1,67 @@
+services:
+  comfyui:
+    # CUDA 12.4 для нового драйвера 580.x
+    image: yanwk/comfyui-boot:cu124
+    container_name: comfyui
+    restart: unless-stopped
+
+    ports:
+      - "8188:8188"
+
+    volumes:
+      - ./comfyui/models:/opt/ComfyUI/models
+      - ./comfyui/input:/opt/ComfyUI/input
+      - ./comfyui/output:/opt/ComfyUI/output
+      - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
+      - ./comfyui/user:/opt/ComfyUI/user
+
+    environment:
+      # NVIDIA налаштування
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+
+      # Оптимізація для GTX 1050 Ti (4GB)
+      PYTORCH_CUDA_ALLOC_CONF: max_split_size_mb:64,garbage_collection_threshold:0.8
+
+      # ComfyUI параметри
+      CLI_ARGS: --listen 0.0.0.0 --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16
+
+    # Використовуйте runtime замість deploy + privileged
+    runtime: nvidia
+
+    # НЕ використовуйте privileged - це ламає сокети!
+    # privileged: true  # ❌ ВИДАЛЕНО
+
+    shm_size: 2gb
+
+    # Додаткові ulimits для стабільності
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8188/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # RIFE для інтерполяції (8fps -> 24fps)
+  rife:
+    image: ghcr.io/k4yt3x/video2x:latest
+    container_name: rife
+    restart: unless-stopped
+    command: sleep infinity
+
+    volumes:
+      - ./comfyui/output:/input:ro
+      - ./rife/output:/output
+
+    runtime: nvidia
+
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    profiles:
+      - rife
