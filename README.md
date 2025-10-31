@@ -52,7 +52,7 @@ rife/
    cp .env.example .env
    # Відредагуйте .env, щоб обрати потрібні образи або додати власні
    ```
-   За замовчуванням використовується публічний образ `cocktailpeanut/comfyui-docker:latest`, який не потребує авторизації. Якщо бажаєте перейти на офіційний образ з GHCR (`ghcr.io/comfyanonymous/comfyui:latest`), змініть значення змінної `COMFYUI_IMAGE` та виконайте авторизацію через `./scripts/login-ghcr.sh`.
+   За замовчуванням використовується публічний образ `lscr.io/linuxserver/comfyui:latest`, який не потребує авторизації. Якщо бажаєте перейти на офіційний образ з GHCR (`ghcr.io/comfyanonymous/comfyui:latest`), змініть значення змінної `COMFYUI_IMAGE` та виконайте авторизацію через `./scripts/login-ghcr.sh`.
 
 2. Якщо потрібен доступ до приватних або обмежених образів на GHCR чи якщо публічний образ вимагає авторизації, виконайте логін:
    ```bash
@@ -100,7 +100,7 @@ Error response from daemon: Head "https://ghcr.io/v2/comfyanonymous/comfyui/mani
   docker build -t comfyui:local .
   ```
   Після цього у `.env` змініть `COMFYUI_IMAGE` на `comfyui:local`.
-- **Використання дзеркала**. Шукайте альтернативні образи на Docker Hub або в інших реєстрах (наприклад, `ghcr.io/cocktailpeanut/comfyui-docker`).
+- **Використання дзеркала**. Шукайте альтернативні образи на Docker Hub або в інших реєстрах (наприклад, `lscr.io/linuxserver/comfyui:latest`). Саме цей образ використовується за замовчуванням у `docker-compose.yml`, тому `docker compose up -d` більше не падає з помилкою `pull access denied`.
 
 ## Налаштування під GPU з 4 ГБ
 
