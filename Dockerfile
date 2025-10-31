@@ -21,17 +21,21 @@ RUN apt-get update \
         libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt/ComfyUI
+WORKDIR /opt
 
-# Copy the actual ComfyUI application source code into the image. The repository
-# structure distinguishes between the capitalized "ComfyUI" directory that holds
-# the application and the lowercase "comfyui" directory that stores user data
-# such as models and outputs (mounted as volumes at runtime). The previous
-# Dockerfile copied the data directory instead of the source, which meant the
-# resulting image lacked `main.py` and failed to start. Copying the correct
-# directory ensures the application files, including `main.py`, are available in
-# the container.
-COPY ComfyUI/ /opt/ComfyUI/
+ARG COMFYUI_REPO=https://github.com/comfyanonymous/ComfyUI.git
+ARG COMFYUI_REF=master
+
+# Fetch the ComfyUI application source code during the image build so that the
+# resulting container always has a complete installation regardless of what is
+# present in the local build context.  This avoids the previous failure where
+# the image only contained the volume-mounted data directory and therefore
+# missed critical application files such as `main.py`.
+RUN git clone --depth 1 --branch "${COMFYUI_REF}" "${COMFYUI_REPO}" ComfyUI \
+    && cd ComfyUI \
+    && git submodule update --init --recursive
+
+WORKDIR /opt/ComfyUI
 
 RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel \
