@@ -6,8 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        COMFYUI_REPO: ${COMFYUI_REPO:-https://github.com/comfyanonymous/ComfyUI.git}
-        COMFYUI_REF: ${COMFYUI_REF:-master}
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
     container_name: comfyui
     restart: unless-stopped
