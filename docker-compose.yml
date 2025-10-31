@@ -16,6 +16,7 @@ services:
       - "8188:8188"
 
     volumes:
+      # Монтуємо тільки специфічні підкаталоги, не весь /opt/ComfyUI
       - ./comfyui/models:/opt/ComfyUI/models
       - ./comfyui/input:/opt/ComfyUI/input
       - ./comfyui/output:/opt/ComfyUI/output
@@ -44,9 +45,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
-    # НЕ використовуйте privileged - це ламає сокети!
-    # privileged: true  # ❌ ВИДАЛЕНО
 
     shm_size: 2gb
 
