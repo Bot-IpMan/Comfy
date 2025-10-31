@@ -8,31 +8,76 @@ services:
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
     container_name: comfyui
     restart: unless-stopped
-
+    
     ports:
       - "8188:8188"
-
+    
     volumes:
       - ./comfyui/models:/opt/ComfyUI/models
       - ./comfyui/input:/opt/ComfyUI/input
       - ./comfyui/output:/opt/ComfyUI/output
       - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
       - ./comfyui/user:/opt/ComfyUI/user
-
+    
     environment:
-      # NVIDIA
+      # NVIDIA (залишаємо на випадок якщо GPU запрацює)
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
       
-      # КРИТИЧНО: Шляхи до CUDA бібліотек
-      LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}"
+      # PyTorch - збільшуємо ліміти для CPU
+      PYTORCH_ALLOC_CONF: "max_split_size_mb:128,garbage_collection_threshold:0.6"
       
-      # PyTorch
-      PYTORCH_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
-      
-      # ComfyUI
-      CLI_ARGS: "--listen --port 8188 --cpu"
-      
+      # ComfyUI - CPU режим з оптимізаціями
+      CLI_ARGS: "--listen --port 8188 --cpu --preview-method latent2rgb"
+    
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          # Обмежуємо пам'ять щоб уникнути OOM
+          memory: 12G
+    
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+    
+    # КРИТИЧНО: Збільшуємо для CPU операцій
+    shm_size: 4gb
+    
+    ulimits:
+      memlock: -1
+      stack: 134217728  # Подвоєно
+      nofile:
+        soft: 65536
+        hard: 65536
+    
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8188/\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  rife:
+    profiles: [rife]
+    image: ${RIFE_IMAGE:-ghcr.io/k4yt3x/video2x:latest}
+    container_name: rife
+    restart: unless-stopped
+
+    depends_on:
+      comfyui:
+        condition: service_healthy
+
+    volumes:
+      - ./comfyui/output:/input:ro
+      - ./rife/output:/output
+
     deploy:
       resources:
         reservations:
@@ -41,19 +86,6 @@ services:
               count: 1
               capabilities: [gpu]
 
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
-      - /dev/nvidiactl:/dev/nvidiactl
-      - /dev/nvidia-uvm:/dev/nvidia-uvm
-
-    shm_size: 2gb
-    ulimits:
-      memlock: -1
-      stack: 67108864
-
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8188/\")'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
