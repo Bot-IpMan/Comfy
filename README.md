@@ -24,10 +24,11 @@
    ./scripts/login-ghcr.sh
    ```
    Скрипт попросить GitHub username і токен (вставляйте токен у прихованому режимі).
-4. Запустіть сервіси:
+4. Запустіть сервіси (ComfyUI та RIFE стартують разом):
    ```bash
    docker compose up -d
    ```
+   Якщо потрібен лише ComfyUI без RIFE, вкажіть імʼя сервісу: `docker compose up -d comfyui`.
 5. Веб-інтерфейс стане доступним на [http://localhost:8188](http://localhost:8188).
 
 ## Структура каталогів
@@ -67,6 +68,9 @@ rife/
 ```bash
 docker compose up -d
 ```
+
+Команда запускає ComfyUI та RIFE. Якщо хочете стартувати тільки ComfyUI, використайте
+`docker compose up -d comfyui`.
 
 Після успішного запуску веб-інтерфейс буде доступний за адресою: [http://localhost:8188](http://localhost:8188).
 
@@ -145,6 +149,7 @@ docker exec -it comfyui nvidia-smi
 
 ## Поширені питання
 
+- **Чи потрібно копіювати Dockerfile до папки `comfyui/`?** Ні, для запуску через `docker compose` достатньо базового образу, який уже вказаний у `docker-compose.yml`. Каталог `comfyui/` у цьому репозиторії використовується лише як точка монтування томів (моделі, вхідні/вихідні дані тощо). Якщо ж хочете зібрати власний образ із локального коду, додайте свій `Dockerfile` у потрібне місце та змініть налаштування Compose (наприклад, через `build:` або зміну `COMFYUI_IMAGE`).
 - **Як додати нові моделі?** Скопіюйте їх у відповідні підкаталоги `comfyui/models`.
 - **Де зберігаються workflow?** У каталозі `comfyui/user/default/`.
 - **Як оновити ComfyUI до nightly?** Змініть тег образу на потрібний (`ghcr.io/comfyanonymous/comfyui:cu121` тощо) та виконайте `docker compose pull`.
