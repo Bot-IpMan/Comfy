@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# ЗАМІСТЬ runtime використовуємо devel (містить більше CUDA бібліотек)
 FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -22,28 +21,29 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
-
 COPY ComfyUI /opt/ComfyUI
-
 WORKDIR /opt/ComfyUI
 
 RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel
 
+# Встановлюємо конкретну версію PyTorch для кращої сумісності
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
-        torch \
-        torchvision \
-        torchaudio \
+        torch==2.5.1 \
+        torchvision==0.20.1 \
+        torchaudio==2.5.1 \
         --index-url ${TORCH_INDEX_URL}
 
 RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
-# Замість звичайного копіювання
+
+# Копіюємо патч для CPU fallback
 RUN PYTHON_VERSION=$(/opt/ComfyUI/venv/bin/python3 -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')") && \
     echo "import os; os.environ['CUDA_VISIBLE_DEVICES'] = ''" > /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py && \
-    cat /opt/ComfyUI/sitecustomize.py >> /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py
+    cat /opt/ComfyUI/sitecustomize.py >> /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py && \
+    echo "Installed sitecustomize.py to force CPU mode" >&2
 
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
