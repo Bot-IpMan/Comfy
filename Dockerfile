@@ -40,9 +40,10 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
 RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
-
+# Замість звичайного копіювання
 RUN PYTHON_VERSION=$(/opt/ComfyUI/venv/bin/python3 -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')") && \
-    cp /opt/ComfyUI/sitecustomize.py /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py
+    echo "import os; os.environ['CUDA_VISIBLE_DEVICES'] = ''" > /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py && \
+    cat /opt/ComfyUI/sitecustomize.py >> /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py
 
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
