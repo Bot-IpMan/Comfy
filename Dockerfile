@@ -23,7 +23,15 @@ RUN apt-get update \
 
 WORKDIR /opt/ComfyUI
 
-COPY comfyui/ /opt/ComfyUI/
+# Copy the actual ComfyUI application source code into the image. The repository
+# structure distinguishes between the capitalized "ComfyUI" directory that holds
+# the application and the lowercase "comfyui" directory that stores user data
+# such as models and outputs (mounted as volumes at runtime). The previous
+# Dockerfile copied the data directory instead of the source, which meant the
+# resulting image lacked `main.py` and failed to start. Copying the correct
+# directory ensures the application files, including `main.py`, are available in
+# the container.
+COPY ComfyUI/ /opt/ComfyUI/
 
 RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel \
