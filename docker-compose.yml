@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
     container_name: comfyui
     restart: unless-stopped
 
@@ -20,18 +20,10 @@ services:
       - ./comfyui/user:/opt/ComfyUI/user
 
     environment:
-      # NVIDIA налаштування
       NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
-      LD_LIBRARY_PATH: "/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-
-      # Оптимізація для GTX 1050 Ti (4GB)
-      PYTORCH_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
-
-      # ComfyUI параметри з CPU фолбеком
-      CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16 --cpu-vae"
-
-    runtime: nvidia
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
+      CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16"
 
     deploy:
       resources:
@@ -42,42 +34,6 @@ services:
               capabilities: [gpu]
 
     shm_size: 2gb
-
     ulimits:
       memlock: -1
       stack: 67108864
-
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8188/\")'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
-
-  rife:
-    profiles: [rife]
-    image: ${RIFE_IMAGE:-ghcr.io/k4yt3x/video2x:latest}
-    container_name: rife
-    restart: unless-stopped
-
-    depends_on:
-      comfyui:
-        condition: service_healthy
-
-    volumes:
-      - ./comfyui/output:/input:ro
-      - ./rife/output:/output
-
-    runtime: nvidia
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
