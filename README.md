@@ -97,13 +97,16 @@ Error response from daemon: Head "https://ghcr.io/v2/comfyanonymous/comfyui/mani
 
 ### Альтернативи, якщо доступ до GHCR неможливий
 
-- **Побудова образу локально**:
+- **Побудова образу локально**. Dockerfile тепер входить до цього репозиторію і одразу запускає `ComfyUI` з параметрами з `CLI_ARGS`:
   ```bash
+  # Клон ComfyUI має лежати поряд із docker-compose.yml
   git clone https://github.com/comfyanonymous/ComfyUI.git
-  cd ComfyUI
+
+  # Збираємо локальний образ (доступний аргумент TORCH_INDEX_URL)
   docker build -t comfyui:local .
   ```
-  Після цього у `.env` змініть `COMFYUI_IMAGE` на `comfyui:local`.
+  За потреби можна передати інший індекс коліс PyTorch: `docker build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118 -t comfyui:cu118 .`
+  Після збірки у `.env` змініть `COMFYUI_IMAGE` на `comfyui:local`.
 - **Використання дзеркала**. Шукайте альтернативні образи на Docker Hub або в інших реєстрах (наприклад, `lscr.io/linuxserver/comfyui:latest`). Саме цей образ використовується за замовчуванням у `docker-compose.yml`, тому `docker compose up -d` більше не падає з помилкою `pull access denied`.
 
 ## Налаштування під GPU з 4 ГБ
