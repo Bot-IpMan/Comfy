@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
+# Використовуйте образ, сумісний з вашим драйвером
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -32,13 +33,16 @@ RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel \
     && if [ -f requirements.txt ]; then /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; fi
 
-# Встановлюємо PyTorch для CUDA 12.6 (сумісний з cu121)
-ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
+# Встановлюємо PyTorch для CUDA 12.4 (сумісний з драйвером 580.x)
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
         torch \
         torchvision \
         torchaudio \
         --index-url ${TORCH_INDEX_URL}
+
+# Додаємо CPU fallback патч
+COPY ComfyUI/sitecustomize.py /opt/ComfyUI/venv/lib/python3.10/site-packages/sitecustomize.py
 
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
