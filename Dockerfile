@@ -20,14 +20,20 @@ RUN apt-get update \
         libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Створюємо користувача comfyui з UID 1000 (типовий для першого користувача)
+RUN groupadd -g 1000 comfyui && \
+    useradd -m -u 1000 -g comfyui comfyui
+
 WORKDIR /opt
-COPY ComfyUI /opt/ComfyUI
+COPY --chown=comfyui:comfyui ComfyUI /opt/ComfyUI
 WORKDIR /opt/ComfyUI
+
+# Виконуємо збірку від імені користувача
+USER comfyui
 
 RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel
 
-# Встановлюємо конкретну версію PyTorch для кращої сумісності
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
         torch==2.5.1 \
@@ -39,7 +45,6 @@ RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
 
-# Копіюємо патч для CPU fallback
 RUN PYTHON_VERSION=$(/opt/ComfyUI/venv/bin/python3 -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')") && \
     echo "import os; os.environ['CUDA_VISIBLE_DEVICES'] = ''" > /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py && \
     cat /opt/ComfyUI/sitecustomize.py >> /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py && \
@@ -47,8 +52,18 @@ RUN PYTHON_VERSION=$(/opt/ComfyUI/venv/bin/python3 -c "import sys; print(f'pytho
 
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
+# Повертаємося до root для копіювання entrypoint
+USER root
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Створюємо необхідні каталоги з правильними правами
+RUN mkdir -p /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output \
+             /opt/ComfyUI/custom_nodes /opt/ComfyUI/user && \
+    chown -R comfyui:comfyui /opt/ComfyUI
+
+# Знову переключаємося на користувача
+USER comfyui
 
 EXPOSE 8188
 
