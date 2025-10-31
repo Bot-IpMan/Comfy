@@ -1,7 +1,7 @@
 services:
   comfyui:
-    # CUDA 12.4 для нового драйвера 580.x
-    image: yanwk/comfyui-boot:cu124
+    # Офіційний образ ComfyUI із підтримкою CUDA
+    image: ghcr.io/comfyanonymous/comfyui:latest
     container_name: comfyui
     restart: unless-stopped
 
@@ -40,7 +40,7 @@ services:
       stack: 67108864
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8188/ || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8188/\")'"]
       interval: 30s
       timeout: 10s
       retries: 3
