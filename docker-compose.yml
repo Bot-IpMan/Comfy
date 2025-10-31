@@ -27,8 +27,16 @@ services:
       # ComfyUI параметри
       CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16"
 
-    # Використовуйте runtime замість deploy + privileged
+    # Використовуйте nvidia runtime разом із офіційними reservations для GPU
     runtime: nvidia
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
     # НЕ використовуйте privileged - це ламає сокети!
     # privileged: true  # ❌ ВИДАЛЕНО
@@ -52,13 +60,20 @@ services:
     image: ${RIFE_IMAGE:-ghcr.io/k4yt3x/video2x:latest}
     container_name: rife
     restart: unless-stopped
-    command: sleep infinity
 
     volumes:
       - ./comfyui/output:/input:ro
       - ./rife/output:/output
 
     runtime: nvidia
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
     environment:
       NVIDIA_VISIBLE_DEVICES: all

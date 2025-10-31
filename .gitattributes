@@ -1,0 +1,4 @@
+# Ensure shell scripts and env files always use LF endings to avoid bash syntax errors
+*.sh text eol=lf
+*.env text eol=lf
+*.env.* text eol=lf
