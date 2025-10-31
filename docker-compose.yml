@@ -1,6 +1,5 @@
 services:
   comfyui:
-    # Локальна збірка образу ComfyUI. За потреби можна змінити змінні в .env
     image: ${COMFYUI_IMAGE:-comfyui:local}
     build:
       context: .
@@ -14,7 +13,6 @@ services:
       - "8188:8188"
 
     volumes:
-      # Монтуємо тільки специфічні підкаталоги, не весь /opt/ComfyUI
       - ./comfyui/models:/opt/ComfyUI/models
       - ./comfyui/input:/opt/ComfyUI/input
       - ./comfyui/output:/opt/ComfyUI/output
@@ -28,12 +26,11 @@ services:
       LD_LIBRARY_PATH: "/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
 
       # Оптимізація для GTX 1050 Ti (4GB)
-      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
+      PYTORCH_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
 
-      # ComfyUI параметри
-      CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16"
+      # ComfyUI параметри з CPU фолбеком
+      CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16 --cpu-vae"
 
-    # Використовуйте nvidia runtime разом із офіційними reservations для GPU
     runtime: nvidia
 
     deploy:
@@ -46,7 +43,6 @@ services:
 
     shm_size: 2gb
 
-    # Додаткові ulimits для стабільності
     ulimits:
       memlock: -1
       stack: 67108864
@@ -58,7 +54,6 @@ services:
       retries: 3
       start_period: 90s
 
-  # RIFE для інтерполяції (8fps -> 24fps)
   rife:
     profiles: [rife]
     image: ${RIFE_IMAGE:-ghcr.io/k4yt3x/video2x:latest}
