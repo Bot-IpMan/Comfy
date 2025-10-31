@@ -1,7 +1,7 @@
 services:
   comfyui:
     # Образ можна змінити через змінну COMFYUI_IMAGE у файлі .env
-    image: ${COMFYUI_IMAGE:-ghcr.io/comfyanonymous/comfyui:latest}
+    image: ${COMFYUI_IMAGE:-cocktailpeanut/comfyui-docker:latest}
     container_name: comfyui
     restart: unless-stopped
 
