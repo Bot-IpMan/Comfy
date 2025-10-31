@@ -23,6 +23,7 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
+      PYTORCH_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
       CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16"
 
     deploy:
