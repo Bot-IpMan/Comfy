@@ -23,7 +23,13 @@ RUN apt-get update \
 
 WORKDIR /opt/ComfyUI
 
-COPY ComfyUI/ /opt/ComfyUI/
+ARG COMFYUI_REPO=https://github.com/comfyanonymous/ComfyUI.git
+ARG COMFYUI_REF=master
+RUN git clone "${COMFYUI_REPO}" /opt/ComfyUI \
+    && cd /opt/ComfyUI \
+    && git checkout --detach "${COMFYUI_REF}" \
+    && git submodule update --init --recursive \
+    && rm -rf .git
 
 RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel \

@@ -10,26 +10,22 @@
    - Перевірити видимість GPU для Docker: `docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi`.
 4. Достатньо місця на диску: моделі ComfyUI можуть займати десятки гігабайт.
 
-## Швидкий старт (із логіном до GHCR)
+## Швидкий старт
 
-1. Згенеруйте на GitHub персональний токен з правами **`read:packages`**.
-2. Скопіюйте файл змінних середовища та, за потреби, відредагуйте образи:
+1. Скопіюйте файл змінних середовища та, за потреби, відредагуйте значення:
    ```bash
    cp .env.example .env
    ```
-3. (Опціонально) Якщо хочете використовувати офіційний образ з GHCR, змініть змінну
-   `COMFYUI_IMAGE` в `.env` та авторизуйтеся, щоб уникнути помилки `denied` при
-   завантаженні образу:
-   ```bash
-   ./scripts/login-ghcr.sh
-   ```
-   Скрипт попросить GitHub username і токен (вставляйте токен у прихованому режимі).
-4. Запустіть сервіси (ComfyUI та RIFE стартують разом):
+2. Запустіть локальну збірку та контейнер ComfyUI (перше виконання може тривати декілька
+   хвилин, доки збирається образ та завантажуються залежності PyTorch):
    ```bash
    docker compose up -d
    ```
-   Якщо потрібен лише ComfyUI без RIFE, вкажіть імʼя сервісу: `docker compose up -d comfyui`.
-5. Веб-інтерфейс стане доступним на [http://localhost:8188](http://localhost:8188).
+3. За бажанням додайте RIFE, увімкнувши профіль `rife`:
+   ```bash
+   docker compose --profile rife up -d
+   ```
+4. Веб-інтерфейс стане доступним на [http://localhost:8188](http://localhost:8188).
 
 ## Структура каталогів
 
@@ -48,14 +44,15 @@ rife/
 
 ## Початкова конфігурація
 
-1. Скопіюйте файл змінних середовища та за потреби змініть образи контейнерів:
+1. Скопіюйте `.env.example` у `.env` та, за потреби, відкоригуйте змінні:
    ```bash
    cp .env.example .env
-   # Відредагуйте .env, щоб обрати потрібні образи або додати власні
    ```
-   За замовчуванням використовується публічний образ `lscr.io/linuxserver/comfyui:latest`, який не потребує авторизації. Якщо бажаєте перейти на офіційний образ з GHCR (`ghcr.io/comfyanonymous/comfyui:latest`), змініть значення змінної `COMFYUI_IMAGE` та виконайте авторизацію через `./scripts/login-ghcr.sh`.
+   - `COMFYUI_IMAGE` — локальний тег для зібраного образу.
+   - `COMFYUI_REPO` та `COMFYUI_REF` — звідки та яку гілку/тег/коміт клонувати під час збірки Dockerfile.
+   - `TORCH_INDEX_URL` — індекс коліс PyTorch (наприклад, `https://download.pytorch.org/whl/cu118`).
 
-2. Якщо потрібен доступ до приватних або обмежених образів на GHCR чи якщо публічний образ вимагає авторизації, виконайте логін:
+2. Якщо плануєте використовувати образи з GitHub Container Registry (наприклад, увімкнути сервіс RIFE або підставити власний `COMFYUI_IMAGE` з GHCR), авторизуйтеся:
    ```bash
    GHCR_USERNAME=<your_github_username> \
    GHCR_TOKEN=<pat_with_read_packages> \
@@ -69,22 +66,25 @@ rife/
 docker compose up -d
 ```
 
-Команда запускає ComfyUI та RIFE. Якщо хочете стартувати тільки ComfyUI, використайте
-`docker compose up -d comfyui`.
+Команда запускає тільки ComfyUI. Щоб додати RIFE, активуйте профіль `rife`:
+
+```bash
+docker compose --profile rife up -d
+```
 
 Після успішного запуску веб-інтерфейс буде доступний за адресою: [http://localhost:8188](http://localhost:8188).
 
 ## Типова проблема: `denied` при завантаженні образу з GHCR
 
-При запуску може з'являтися помилка на кшталт:
+Завдяки локальній збірці ComfyUI ця помилка більше не виникає для основного сервісу, але її все ще можна побачити під час завантаження образів з GitHub Container Registry (наприклад, сервісу RIFE або стороннього `COMFYUI_IMAGE`). Приклад повідомлення:
 
 ```
 Error response from daemon: Head "https://ghcr.io/v2/comfyanonymous/comfyui/manifests/latest": denied
 ```
 
-Це означає, що Docker не може завантажити образ з GitHub Container Registry (GHCR). Можливі причини та способи вирішення:
+Це означає, що Docker не може завантажити образ з GHCR. Можливі причини та способи вирішення:
 
-1. **Неавторизований доступ до GHCR**. Деякі образи вимагають авторизації навіть для публічних репозиторіїв.
+1. **Неавторизований доступ до GHCR**. Більшість організацій вимагають токен навіть для публічних образів.
    - Згенеруйте на GitHub токен з правами `read:packages`.
    - Запустіть `./scripts/login-ghcr.sh` (або вручну `echo <TOKEN> | docker login ghcr.io -u <USERNAME> --password-stdin`).
    - Після авторизації повторіть `docker compose pull` або `docker compose up -d`.
@@ -97,17 +97,8 @@ Error response from daemon: Head "https://ghcr.io/v2/comfyanonymous/comfyui/mani
 
 ### Альтернативи, якщо доступ до GHCR неможливий
 
-- **Побудова образу локально**. Dockerfile тепер входить до цього репозиторію і одразу запускає `ComfyUI` з параметрами з `CLI_ARGS`:
-  ```bash
-  # Клон ComfyUI має лежати поряд із docker-compose.yml
-  git clone https://github.com/comfyanonymous/ComfyUI.git
-
-  # Збираємо локальний образ (доступний аргумент TORCH_INDEX_URL)
-  docker build -t comfyui:local .
-  ```
-  За потреби можна передати інший індекс коліс PyTorch: `docker build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118 -t comfyui:cu118 .`
-  Після збірки у `.env` змініть `COMFYUI_IMAGE` на `comfyui:local`.
-- **Використання дзеркала**. Шукайте альтернативні образи на Docker Hub або в інших реєстрах (наприклад, `lscr.io/linuxserver/comfyui:latest`). Саме цей образ використовується за замовчуванням у `docker-compose.yml`, тому `docker compose up -d` більше не падає з помилкою `pull access denied`.
+- **Вимкніть залежні сервіси**. Не активуйте профіль `rife`, якщо немає можливості автентифікуватися в GHCR.
+- **Вкажіть інше джерело образу.** Можна знайти альтернативні збірки на Docker Hub чи в інших реєстрах і замінити `RIFE_IMAGE` або `COMFYUI_IMAGE` у `.env`.
 
 ## Налаштування під GPU з 4 ГБ
 
