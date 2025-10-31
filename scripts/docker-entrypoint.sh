@@ -3,6 +3,13 @@ set -euo pipefail
 
 cd /opt/ComfyUI
 
+# Оптимізації пам'яті для CPU режиму
+export MALLOC_ARENA_MAX=2
+export MALLOC_MMAP_THRESHOLD_=131072
+export MALLOC_TRIM_THRESHOLD_=131072
+export MALLOC_TOP_PAD_=131072
+export MALLOC_MMAP_MAX_=65536
+
 ensure_source_tree() {
   if [[ -f main.py ]]; then
     return
@@ -46,5 +53,5 @@ if [[ -n "${CLI_ARGS:-}" ]]; then
   # shellcheck disable=SC2086
   exec python -u main.py ${CLI_ARGS}
 else
-  exec python -u main.py --listen --port 8188
+  exec python -u main.py --listen --port 8188 --cpu
 fi
