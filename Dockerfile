@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+# ЗАМІСТЬ runtime використовуємо devel (містить більше CUDA бібліотек)
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -22,16 +23,13 @@ RUN apt-get update \
 
 WORKDIR /opt
 
-# Копіюємо локальні файли ComfyUI
 COPY ComfyUI /opt/ComfyUI
 
 WORKDIR /opt/ComfyUI
 
-# Створюємо venv
 RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel
 
-# Встановлюємо PyTorch для CUDA 12.4
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
         torch \
@@ -39,16 +37,12 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
         torchaudio \
         --index-url ${TORCH_INDEX_URL}
 
-# Встановлюємо requirements.txt якщо є
 RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
 
-# КРИТИЧНО: Копіюємо sitecustomize.py ПІСЛЯ встановлення torch
-# Знаходимо правильну версію Python і копіюємо туди
 RUN PYTHON_VERSION=$(/opt/ComfyUI/venv/bin/python3 -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')") && \
-    cp /opt/ComfyUI/sitecustomize.py /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py && \
-    echo "Copied sitecustomize.py to /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/"
+    cp /opt/ComfyUI/sitecustomize.py /opt/ComfyUI/venv/lib/${PYTHON_VERSION}/site-packages/sitecustomize.py
 
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
