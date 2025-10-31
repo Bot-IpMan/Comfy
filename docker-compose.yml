@@ -31,12 +31,15 @@ services:
       PYTORCH_ALLOC_CONF: "max_split_size_mb:64,garbage_collection_threshold:0.8"
       
       # ComfyUI
-      CLI_ARGS: "--listen --port 8188 --lowvram --preview-method auto --disable-smart-memory --force-fp16"
-
+      CLI_ARGS: "--listen --port 8188 --cpu"
+      
     deploy:
       resources:
         reservations:
           devices:
+            - /dev/nvidia0:/dev/nvidia0
+            - /dev/nvidiactl:/dev/nvidiactl
+            - /dev/nvidia-uvm:/dev/nvidia-uvm
             - driver: nvidia
               count: 1
               capabilities: [gpu]
