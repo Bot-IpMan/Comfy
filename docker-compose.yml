@@ -9,6 +9,7 @@ services:
     container_name: comfyui
     restart: unless-stopped
     user: "0:0"
+    privileged: true
     
     ports:
       - "8188:8188"
