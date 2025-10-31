@@ -25,6 +25,8 @@ WORKDIR /opt
 
 ARG COMFYUI_REPO=https://github.com/comfyanonymous/ComfyUI.git
 ARG COMFYUI_REF=master
+ENV COMFYUI_REPO=${COMFYUI_REPO} \
+    COMFYUI_REF=${COMFYUI_REF}
 
 # Fetch the ComfyUI application source code during the image build so that the
 # resulting container always has a complete installation regardless of what is
