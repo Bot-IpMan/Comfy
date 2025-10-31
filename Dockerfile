@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -23,7 +23,7 @@ RUN apt-get update \
 
 WORKDIR /opt
 
-# Копіюємо локальні файли ComfyUI замість клонування з GitHub
+# Копіюємо локальні файли ComfyUI
 COPY ComfyUI /opt/ComfyUI
 
 WORKDIR /opt/ComfyUI
@@ -32,6 +32,7 @@ RUN python3 -m venv /opt/ComfyUI/venv \
     && /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel \
     && if [ -f requirements.txt ]; then /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; fi
 
+# Встановлюємо PyTorch для CUDA 12.6 (сумісний з cu121)
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
         torch \
