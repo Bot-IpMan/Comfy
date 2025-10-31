@@ -23,19 +23,8 @@ RUN apt-get update \
 
 WORKDIR /opt
 
-ARG COMFYUI_REPO=https://github.com/comfyanonymous/ComfyUI.git
-ARG COMFYUI_REF=master
-ENV COMFYUI_REPO=${COMFYUI_REPO} \
-    COMFYUI_REF=${COMFYUI_REF}
-
-# Fetch the ComfyUI application source code during the image build so that the
-# resulting container always has a complete installation regardless of what is
-# present in the local build context.  This avoids the previous failure where
-# the image only contained the volume-mounted data directory and therefore
-# missed critical application files such as `main.py`.
-RUN git clone --depth 1 --branch "${COMFYUI_REF}" "${COMFYUI_REPO}" ComfyUI \
-    && cd ComfyUI \
-    && git submodule update --init --recursive
+# Копіюємо локальні файли ComfyUI замість клонування з GitHub
+COPY ComfyUI /opt/ComfyUI
 
 WORKDIR /opt/ComfyUI
 
