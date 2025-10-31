@@ -20,6 +20,80 @@ try:
 except Exception:  # pragma: no cover - torch import errors are not expected
     torch = None  # type: ignore[assignment]
 
+_CUDA_FAILED = False
+
+
+def _mark_cuda_failed() -> None:
+    global _CUDA_FAILED
+    _CUDA_FAILED = True
+
+
+def _patch_torch_cuda() -> None:
+    """Install defensive wrappers around ``torch.cuda`` helpers."""
+
+    if torch is None or not hasattr(torch, "cuda"):
+        _mark_cuda_failed()
+        return
+
+    cuda = torch.cuda
+    original_device_count = getattr(cuda, "device_count", None)
+    original_is_available = getattr(cuda, "is_available", None)
+    original_current_device = getattr(cuda, "current_device", None)
+
+    if original_is_available is None or original_current_device is None:
+        _mark_cuda_failed()
+        return
+
+    if original_device_count is None:
+        def original_device_count():  # type: ignore[no-redef]
+            return 0
+
+    def safe_device_count(*args: Any, **kwargs: Any) -> int:
+        if _CUDA_FAILED:
+            return 0
+        try:
+            return int(original_device_count(*args, **kwargs))
+        except Exception:
+            _mark_cuda_failed()
+            return 0
+
+    def safe_is_available(*args: Any, **kwargs: Any) -> bool:
+        if _CUDA_FAILED:
+            return False
+        try:
+            available = bool(original_is_available(*args, **kwargs))
+        except Exception:
+            _mark_cuda_failed()
+            return False
+        if not available:
+            return False
+        # ``torch.cuda.is_available`` may return ``True`` even when querying the
+        # device fails (for example on WSL without GPU support).  We run an
+        # additional check that mirrors what PyTorch does internally so that we
+        # can reliably fall back to CPU execution without crashing ComfyUI.
+        try:
+            original_device_count()
+        except Exception:
+            _mark_cuda_failed()
+            return False
+        return available
+
+    def safe_current_device(*args: Any, **kwargs: Any):
+        if _CUDA_FAILED:
+            return "cpu"
+        try:
+            return original_current_device(*args, **kwargs)
+        except Exception:
+            _mark_cuda_failed()
+            return "cpu"
+
+    cuda.device_count = safe_device_count  # type: ignore[assignment]
+    cuda.is_available = safe_is_available  # type: ignore[assignment]
+    cuda.current_device = safe_current_device  # type: ignore[assignment]
+
+
+_patch_torch_cuda()
+
 
 def _fallback_device() -> "torch.device":  # type: ignore[name-defined]
     """Return a CPU device object even if ``torch`` is ``None``.
@@ -43,7 +117,7 @@ def _make_safe_get_torch_device(original: Any):
     """Wrap ``get_torch_device`` so it falls back to CPU when CUDA is unusable."""
 
     def safe_get_torch_device(*args: Any, **kwargs: Any):
-        if torch is None:
+        if torch is None or _CUDA_FAILED:
             return _fallback_device()
         try:
             if torch.cuda.is_available():
