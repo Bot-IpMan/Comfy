@@ -37,12 +37,14 @@ services:
       resources:
         reservations:
           devices:
-            - /dev/nvidia0:/dev/nvidia0
-            - /dev/nvidiactl:/dev/nvidiactl
-            - /dev/nvidia-uvm:/dev/nvidia-uvm
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
 
     shm_size: 2gb
     ulimits:
