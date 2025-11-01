@@ -26,12 +26,15 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-      
-      # PyTorch - збільшуємо ліміти для CPU
-      PYTORCH_ALLOC_CONF: "max_split_size_mb:128,garbage_collection_threshold:0.6"
-      
-      # ComfyUI - CPU режим з оптимізаціями
-      CLI_ARGS: "--listen --port 8188 --cpu --preview-method latent2rgb"
+
+      # PyTorch - оптимізація аллокатора під великі графи
+      PYTORCH_ALLOC_CONF: "max_split_size_mb:256,expandable_segments:True"
+
+      # Критичні змінні для економії RAM на CPU
+      MALLOC_ARENA_MAX: "2"
+
+      # ComfyUI - режим низького споживання пам'яті
+      CLI_ARGS: "--listen --port 8188 --cpu --lowvram --novram --preview-method none --disable-metadata"
     
     deploy:
       resources:
@@ -41,8 +44,9 @@ services:
               count: 1
               capabilities: [gpu]
         limits:
-          # Обмежуємо пам'ять щоб уникнути OOM
-          memory: 12G
+          # Збільшуємо ліміт RAM і дозволяємо swap
+          memory: 14G
+          memory_swap: 16G
     
     devices:
       - /dev/nvidia0:/dev/nvidia0
@@ -50,11 +54,14 @@ services:
       - /dev/nvidia-uvm:/dev/nvidia-uvm
     
     # КРИТИЧНО: Збільшуємо для CPU операцій
-    shm_size: 4gb
+    shm_size: 6gb
+
+    # Дозволяємо активніше використання swap
+    mem_swappiness: 60
     
     ulimits:
       memlock: -1
-      stack: 134217728  # Подвоєно
+      stack: 268435456  # 256MB
       nofile:
         soft: 65536
         hard: 65536
