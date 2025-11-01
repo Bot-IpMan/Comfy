@@ -3,12 +3,8 @@ set -euo pipefail
 
 cd /opt/ComfyUI
 
-# Оптимізації пам'яті для CPU режиму
-export MALLOC_ARENA_MAX=2
-export MALLOC_MMAP_THRESHOLD_=131072
-export MALLOC_TRIM_THRESHOLD_=131072
-export MALLOC_TOP_PAD_=131072
-export MALLOC_MMAP_MAX_=65536
+# Оптимізації пам'яті для CPU режиму (можна перевизначити через env)
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
 
 ensure_source_tree() {
   if [[ -f main.py ]]; then

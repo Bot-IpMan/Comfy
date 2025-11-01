@@ -104,15 +104,16 @@ Error response from daemon: Head "https://ghcr.io/v2/comfyanonymous/comfyui/mani
 
 Файл `docker-compose.yml` уже містить такі ключові параметри:
 
-- `CLI_ARGS: --lowvram --disable-smart-memory --force-fp16` — режим низького споживання памʼяті та 16-бітні обчислення.
-- `PYTORCH_CUDA_ALLOC_CONF: max_split_size_mb:64` — оптимізація аллокатора для обмеженої памʼяті.
-- `shm_size: 2gb` та ulimits для запобігання крешам при великих графах.
+- `CLI_ARGS: --lowvram --novram --preview-method none --disable-metadata` — агресивний режим економії памʼяті для CPU.
+- `PYTORCH_ALLOC_CONF: max_split_size_mb:256,expandable_segments:True` — оптимізація аллокатора для великих графів.
+- `MALLOC_ARENA_MAX: 2` — обмеження кількості арен, щоб уникати фрагментації RAM.
+- `shm_size: 6gb`, `mem_swappiness: 60` та збільшений `stack` — додаткові запаси під великі workflow.
 
 При появі Out Of Memory:
 
 - Зменште розмір пакетів (batch size) у workflow.
 - Використовуйте менші за розміром моделі (наприклад, `pruned` чекпоінти або `fp16`).
-- Відключіть превʼю (`--preview-method none`) у `CLI_ARGS`.
+- Відключіть превʼю (`--preview-method none`) у `CLI_ARGS`, якщо тестуєте інші режими перегляду.
 
 ## Оновлення образів
 
