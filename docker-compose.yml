@@ -35,7 +35,7 @@ services:
       MALLOC_MMAP_THRESHOLD_: "131072"
       
       # ВИПРАВЛЕНО: Видалено --lowvram (несумісно з --cpu)
-      CLI_ARGS: "--listen --port 8188 --cpu --preview-method none --disable-metadata --cpu-vae --force-fp32 --disable-smart-memory"
+      CLI_ARGS: "--listen --port 8188 --cpu --preview-method none --fast"
     
     deploy:
       resources:
@@ -44,8 +44,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-        limits:
-          memory: 14G
+        #limits:
+        #  memory: 14G
     
     devices:
       - /dev/nvidia0:/dev/nvidia0
