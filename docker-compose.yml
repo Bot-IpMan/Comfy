@@ -75,11 +75,7 @@ services:
         done;
 
         echo ">>> Sanity CUDA check";
-        /opt/ComfyUI/venv/bin/python - <<PY
-          import torch, sys
-          print("torch", torch.__version__, "| cuda", torch.version.cuda, "| is_available", torch.cuda.is_available())
-          sys.exit(0 if torch.cuda.is_available() else 1)
-        PY
+        /opt/ComfyUI/venv/bin/python -c "import torch, sys; print('torch', torch.__version__, '| cuda', torch.version.cuda, '| is_available', torch.cuda.is_available()); sys.exit(0 if torch.cuda.is_available() else 1)";
         echo ">>> Launch ComfyUI";
         exec /opt/ComfyUI/venv/bin/python /opt/ComfyUI/main.py ${CLI_ARGS};
       '
