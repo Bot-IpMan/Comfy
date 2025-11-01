@@ -54,7 +54,11 @@ sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
 if [[ $# -gt 0 ]]; then
-  exec python -u main.py "$@"
+  if [[ "$1" == -* ]]; then
+    exec python -u main.py "$@"
+  else
+    exec "$@"
+  fi
 fi
 
 if [[ -n "${CLI_ARGS:-}" ]]; then
