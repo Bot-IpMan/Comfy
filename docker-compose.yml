@@ -8,8 +8,7 @@ services:
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
     container_name: comfyui
     restart: unless-stopped
-    user: "0:0"
-    privileged: true
+    user: "1000:1000"
 
     dns:
       - 8.8.8.8
@@ -33,59 +32,19 @@ services:
               count: 1
               capabilities: [gpu]
 
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
-      - /dev/nvidiactl:/dev/nvidiactl
-      - /dev/nvidia-uvm:/dev/nvidia-uvm
-      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
-
     environment:
       NVIDIA_VISIBLE_DEVICES: "all"
       NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
       CUDA_DEVICE_ORDER: "PCI_BUS_ID"
       CUDA_VISIBLE_DEVICES: "0"
-      COMFYUI_SKIP_TORCH_INSTALL: "1"
-      PIP_PREFER_BINARY: "1"
       LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
       PYTORCH_ALLOC_CONF: "max_split_size_mb:256,expandable_segments:True,garbage_collection_threshold:0.8"
       MALLOC_ARENA_MAX: "2"
-      MALLOC_TRIM_THRESHOLD_: "131072"
-      MALLOC_MMAP_THRESHOLD_: "131072"
-      CLI_ARGS: "--listen --port 8188 --preview-method auto --lowvram --force-fp32"
+      CLI_ARGS: "--listen --port 8188 --preview-method auto --lowvram"
 
-    # Готуємо venv, ставимо pip/uv, узгоджені колеса Torch та (опційно) xformers
-    command: >
-      bash -lc '
-        set -e
-        echo ">>> Prepare venv";
-        python3 -m venv /opt/ComfyUI/venv || true;
-        /opt/ComfyUI/venv/bin/python -m ensurepip --upgrade || true;
-        /opt/ComfyUI/venv/bin/pip install -U pip uv gitpython wheel setuptools;
+    command: /usr/local/bin/docker-entrypoint.sh
 
-        echo ">>> Install torch stack (cu124)";
-        /opt/ComfyUI/venv/bin/pip install --index-url "${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}" \
-          "torch==2.5.1+cu124" "torchvision==0.20.1+cu124";
-
-        echo ">>> (Optional) xformers";
-        /opt/ComfyUI/venv/bin/pip install --only-binary=:all: "xformers==0.0.28.post1" || true;
-
-        echo ">>> Install custom_nodes requirements (if any)";
-        for req in /opt/ComfyUI/custom_nodes/*/requirements.txt; do
-          [ -f "$req" ] && /opt/ComfyUI/venv/bin/pip install -r "$req" || true;
-        done;
-
-        echo ">>> Sanity CUDA check";
-        /opt/ComfyUI/venv/bin/python -c "import torch, sys; print('torch', torch.__version__, '| cuda', torch.version.cuda, '| is_available', torch.cuda.is_available()); sys.exit(0 if torch.cuda.is_available() else 1)";
-        echo ">>> Launch ComfyUI";
-        exec /opt/ComfyUI/venv/bin/python /opt/ComfyUI/main.py ${CLI_ARGS};
-      '
-
-    security_opt:
-      - seccomp:unconfined
-      - apparmor:unconfined
-
-    shm_size: 8gb
-    ipc: host
+    shm_size: 6gb
     ulimits:
       memlock: -1
       stack: 268435456
@@ -94,7 +53,7 @@ services:
         hard: 65536
 
     healthcheck:
-      test: ["CMD-SHELL", "/opt/ComfyUI/venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)'"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8188/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
