@@ -34,7 +34,7 @@ services:
       MALLOC_ARENA_MAX: "2"
 
       # ComfyUI - режим низького споживання пам'яті
-      CLI_ARGS: "--listen --port 8188 --cpu --lowvram --novram --preview-method none --disable-metadata"
+      CLI_ARGS: "--listen --port 8188 --cpu --lowvram --novram --preview-method none --disable-metadata --cpu-vae --force-fp32"
     
     deploy:
       resources:
@@ -44,9 +44,8 @@ services:
               count: 1
               capabilities: [gpu]
         limits:
-          # Збільшуємо ліміт RAM і дозволяємо swap
+          # Збільшуємо ліміт RAM
           memory: 14G
-          memory_swap: 16G
     
     devices:
       - /dev/nvidia0:/dev/nvidia0
