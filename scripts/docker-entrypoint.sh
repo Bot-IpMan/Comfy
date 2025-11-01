@@ -3,8 +3,16 @@ set -euo pipefail
 
 cd /opt/ComfyUI
 
-# Оптимізації пам'яті для CPU режиму (можна перевизначити через env)
-export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+# Агресивна оптимізація пам'яті
+export MALLOC_ARENA_MAX=2
+export MALLOC_MMAP_THRESHOLD_=131072
+export MALLOC_TRIM_THRESHOLD_=131072
+export MALLOC_TOP_PAD_=131072
+export MALLOC_MMAP_MAX_=65536
+
+# Python оптимізації
+export PYTHONHASHSEED=0
+export PYTHONMALLOC=malloc
 
 ensure_source_tree() {
   if [[ -f main.py ]]; then
@@ -40,6 +48,10 @@ ensure_source_tree() {
 }
 
 ensure_source_tree
+
+# Очищуємо кеш перед стартом
+sync
+echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
 if [[ $# -gt 0 ]]; then
   exec python -u main.py "$@"
