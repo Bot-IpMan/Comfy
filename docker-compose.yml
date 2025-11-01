@@ -22,19 +22,20 @@ services:
       - ./comfyui/user:/opt/ComfyUI/user
     
     environment:
-      # NVIDIA (залишаємо на випадок якщо GPU запрацює)
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-
-      # PyTorch - оптимізація аллокатора під великі графи
-      PYTORCH_ALLOC_CONF: "max_split_size_mb:256,expandable_segments:True"
-
-      # Критичні змінні для економії RAM на CPU
+      
+      # PyTorch оптимізація
+      PYTORCH_ALLOC_CONF: "max_split_size_mb:512,expandable_segments:True,garbage_collection_threshold:0.8"
+      
+      # Економія RAM
       MALLOC_ARENA_MAX: "2"
-
-      # ComfyUI - режим низького споживання пам'яті
-      CLI_ARGS: "--listen --port 8188 --cpu --lowvram --novram --preview-method none --disable-metadata --cpu-vae --force-fp32"
+      MALLOC_TRIM_THRESHOLD_: "131072"
+      MALLOC_MMAP_THRESHOLD_: "131072"
+      
+      # ВИПРАВЛЕНО: Видалено --lowvram (несумісно з --cpu)
+      CLI_ARGS: "--listen --port 8188 --cpu --preview-method none --disable-metadata --cpu-vae --force-fp32 --disable-smart-memory"
     
     deploy:
       resources:
@@ -44,7 +45,6 @@ services:
               count: 1
               capabilities: [gpu]
         limits:
-          # Збільшуємо ліміт RAM
           memory: 14G
     
     devices:
@@ -52,25 +52,24 @@ services:
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
     
-    # КРИТИЧНО: Збільшуємо для CPU операцій
-    shm_size: 6gb
-
-    # Дозволяємо активніше використання swap
-    mem_swappiness: 60
+    # Збільшена shared memory
+    shm_size: 8gb
+    
+    # ВИДАЛЕНО: mem_swappiness (не підтримується)
     
     ulimits:
       memlock: -1
-      stack: 268435456  # 256MB
+      stack: 268435456
       nofile:
         soft: 65536
         hard: 65536
     
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8188/\")' || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8188/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 180s
 
   rife:
     profiles: [rife]
