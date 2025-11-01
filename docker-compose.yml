@@ -10,36 +10,19 @@ services:
     restart: unless-stopped
     user: "0:0"
     privileged: true
-    
+
     ports:
       - "8188:8188"
-    
+
+    # Моделі/дані зовні
     volumes:
       - ./comfyui/models:/opt/ComfyUI/models
       - ./comfyui/input:/opt/ComfyUI/input
       - ./comfyui/output:/opt/ComfyUI/output
       - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
       - ./comfyui/user:/opt/ComfyUI/user
-    
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      - COMFYUI_SKIP_TORCH_INSTALL=1
-      - PIP_PREFER_BINARY=1
-      
-      LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-      
-      # PyTorch оптимізація
-      PYTORCH_ALLOC_CONF: "max_split_size_mb:512,expandable_segments:True,garbage_collection_threshold:0.8"
-      
-      # Економія RAM
-      MALLOC_ARENA_MAX: "2"
-      MALLOC_TRIM_THRESHOLD_: "131072"
-      MALLOC_MMAP_THRESHOLD_: "131072"
-      
-      # ВИПРАВЛЕНО: Видалено --lowvram (несумісно з --cpu)
-      CLI_ARGS: "--listen --port 8188 --cpu --preview-method none --fast"
-    
+
+    # Доступ до GPU (офіційний шлях через device reservations)
     deploy:
       resources:
         reservations:
@@ -47,47 +30,96 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-        #limits:
-        #  memory: 14G
-    
+
+    # Додатково примапимо спецдевайси драйвера (допомагає проти помилки 304)
     devices:
       - /dev/nvidia0:/dev/nvidia0
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
-    
-    # Збільшена shared memory
-    shm_size: 8gb
-    
-    # ВИДАЛЕНО: mem_swappiness (не підтримується)
-    
+      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
+
+    # Лібки CUDA/NVIDIA у шлях
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+      CUDA_VISIBLE_DEVICES: "0"
+      LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+      # Запобігаємо авто-інсталу застарілих коліс ComfyUI
+      COMFYUI_SKIP_TORCH_INSTALL: "1"
+      PIP_PREFER_BINARY: "1"
+      # Тонке керування алокатором
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:64"
+      PYTORCH_ALLOC_CONF: "max_split_size_mb:64"
+      # ЖОДНОГО --cpu! Увімкнемо lowvram та прев’ю
+      CLI_ARGS: "--listen --port 8188 --preview-method auto --lowvram"
+
+    # Послаблені профілі безпеки: іноді потрібні для старих карт/драйверів
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+
+    # Більше спільної пам'яті для PyTorch/моделей
+    shm_size: "8g"
+    ipc: host
+
     ulimits:
       memlock: -1
       stack: 268435456
       nofile:
         soft: 65536
         hard: 65536
-    
+
+    # Єдиний entrypoint: перевірити GPU → поставити узгоджені пакети → старт
+    entrypoint: [ "bash", "-lc" ]
+    command: |
+      set -e
+      echo ">>> nvidia-smi (контейнер):"; nvidia-smi || true
+
+      cd /opt/ComfyUI || (echo "ComfyUI не знайдено у /opt/ComfyUI" && exit 1)
+
+      # Акуратне оновлення pip/setuptools/wheel
+      python3 -m pip install --no-cache-dir --upgrade "pip<25.4" wheel setuptools uv
+
+      # Узгоджений стек під CUDA 12.4 (офіційний індекс коліс PyTorch для cu124)
+      python3 -m pip install --no-cache-dir --index-url ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124} \
+        "torch==2.5.1+cu124" "torchvision==0.20.1+cu124"
+      python3 -m pip install --no-cache-dir "xformers==0.0.27.post2"
+
+      # Вимкнути venv у ComfyUI-Manager, щоб він не підміняв середовище
+      mkdir -p /opt/ComfyUI/user/default/ComfyUI-Manager
+      CFG=/opt/ComfyUI/user/default/ComfyUI-Manager/config.ini
+      [ -f "$CFG" ] || touch "$CFG"
+      grep -q '^use_venv' "$CFG" && sed -i 's/^use_venv.*/use_venv = false/' "$CFG" || echo 'use_venv = false' >> "$CFG"
+
+      # Sanity-check CUDA з Python
+      python3 - <<'PY'
+import torch, sys
+print("torch:", torch.__version__, "| cuda:", torch.version.cuda, "| is_available:", torch.cuda.is_available())
+sys.exit(0 if torch.cuda.is_available() else 1)
+PY
+
+      # Старт ComfyUI (GPU, без --cpu)
+      exec python3 /opt/ComfyUI/main.py ${CLI_ARGS}
+
+    # Healthcheck: HTTP + швидка Python-перевірка CUDA
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8188/ || exit 1"]
+      test: ["CMD-SHELL", "python3 - <<'PY'\nimport torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)\nPY"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 180s
+      start_period: 60s
 
   rife:
     profiles: [rife]
     image: ${RIFE_IMAGE:-ghcr.io/k4yt3x/video2x:latest}
     container_name: rife
     restart: unless-stopped
-
     depends_on:
       comfyui:
         condition: service_healthy
-
     volumes:
       - ./comfyui/output:/input:ro
       - ./rife/output:/output
-
     deploy:
       resources:
         reservations:
@@ -95,7 +127,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
     environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
