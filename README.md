@@ -147,7 +147,7 @@ docker exec -it comfyui nvidia-smi
 - **Чи потрібно копіювати Dockerfile до папки `comfyui/`?** Ні, для запуску через `docker compose` достатньо базового образу, який уже вказаний у `docker-compose.yml`. Каталог `comfyui/` у цьому репозиторії використовується лише як точка монтування томів (моделі, вхідні/вихідні дані тощо). Якщо ж хочете зібрати власний образ із локального коду, додайте свій `Dockerfile` у потрібне місце та змініть налаштування Compose (наприклад, через `build:` або зміну `COMFYUI_IMAGE`).
 - **Як додати нові моделі?** Скопіюйте їх у відповідні підкаталоги `comfyui/models`.
 - **Де зберігаються workflow?** У каталозі `comfyui/user/default/`.
-- **Як оновити ComfyUI до nightly?** Змініть тег образу на потрібний (`ghcr.io/comfyanonymous/comfyui:cu121` тощо) та виконайте `docker compose pull`.
+- **Як оновити ComfyUI до nightly?** Змініть тег образу на потрібний (`ghcr.io/comfyanonymous/comfyui:cu118` тощо) та виконайте `docker compose pull`.
 
 ## Корисні посилання
 
