@@ -49,6 +49,32 @@ ensure_source_tree() {
 
 ensure_source_tree
 
+# Ensure ComfyUI uses a CPU fallback when CUDA is unavailable
+ensure_cpu_fallback_patch() {
+  python - <<'PY'
+from pathlib import Path
+
+path = Path("comfy/model_management.py")
+if not path.exists():
+    raise SystemExit(0)
+
+code = path.read_text()
+needle = "    return torch.device(torch.cuda.current_device())"
+
+if needle not in code:
+    raise SystemExit(0)
+
+replacement = """    try:\n        current_device = torch.cuda.current_device()\n    except Exception:  # pragma: no cover - safety net for non-CUDA environments\n        return torch.device(\"cpu\")\n    return torch.device(current_device)"""
+
+if replacement in code:
+    raise SystemExit(0)
+
+path.write_text(code.replace(needle, replacement))
+PY
+}
+
+ensure_cpu_fallback_patch || true
+
 # Очищуємо кеш перед стартом (якщо можливо)
 sync
 if [[ -f /proc/sys/vm/drop_caches && -w /proc/sys/vm/drop_caches ]]; then
