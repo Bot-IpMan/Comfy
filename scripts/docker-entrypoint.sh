@@ -105,16 +105,14 @@ sys.exit(0 if available else 1)
 PY
 }
 
+declare -a args
 if [[ $# -gt 0 ]]; then
   if [[ "$1" == -* ]]; then
-    exec python -u main.py "$@"
+    args=("$@")
   else
     exec "$@"
   fi
-fi
-
-declare -a args
-if [[ -n "${CLI_ARGS:-}" ]]; then
+elif [[ -n "${CLI_ARGS:-}" ]]; then
   # shellcheck disable=SC2206
   args=( ${CLI_ARGS} )
 fi
@@ -124,10 +122,12 @@ if [[ ${#args[@]} -eq 0 ]]; then
 fi
 
 if ! check_cuda_available; then
-  # Remove GPU-specific memory presets that conflict with --cpu
+  # Remove GPU-specific memory presets that conflict with --cpu and ensure
+  # we only pass a single --cpu flag.
   gpu_memory_flags=(--gpu-only --highvram --normalvram --lowvram --novram)
   if [[ ${#args[@]} -gt 0 ]]; then
     filtered_args=()
+    cpu_flag_present=false
     for arg in "${args[@]}"; do
       skip=false
       for flag in "${gpu_memory_flags[@]}"; do
@@ -136,14 +136,26 @@ if ! check_cuda_available; then
           break
         fi
       done
-      if ! $skip; then
-        filtered_args+=("${arg}")
+      if $skip; then
+        continue
       fi
+
+      if [[ "${arg}" == "--cpu" ]]; then
+        if ! $cpu_flag_present; then
+          cpu_flag_present=true
+          filtered_args+=("${arg}")
+        fi
+        continue
+      fi
+
+      filtered_args+=("${arg}")
     done
     args=("${filtered_args[@]}")
+  else
+    cpu_flag_present=false
   fi
 
-  if [[ " ${args[*]} " != *" --cpu "* ]]; then
+  if ! ${cpu_flag_present:-false}; then
     args+=(--cpu)
   fi
 fi
