@@ -46,7 +46,7 @@ RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
 
-# xformers для cu118 (версія 0.0.27.x сумісна з PyTorch 2.4.1+cu118)
+# xformers для cu118 (версія 0.0.27.x сумісна з PyTorch 2.4.1+cu118; 0.0.28.x потребує cu121)
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers==0.0.27.post2 || true
 
 # Створюємо глобальні симлінки для pip/python, щоб ComfyUI-Manager бачив їх
