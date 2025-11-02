@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Використовуємо CUDA 12.4 runtime для сумісності з драйвером 580.x (CUDA 13.0)
+# Використовуємо CUDA 12.4 runtime для сумісності з драйвером 580.x
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -32,21 +32,32 @@ WORKDIR /opt/ComfyUI
 
 # Створюємо venv
 RUN python3 -m venv /opt/ComfyUI/venv && \
-    /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel setuptools
+    /opt/ComfyUI/venv/bin/pip install --upgrade pip==24.0
 
-# Використовуємо cu124 - найновіший доступний PyTorch для вашого драйвера
+# КРИТИЧНО: Встановлюємо PyTorch БЕЗ залежностей спочатку, потім додаємо їх
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
-RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
+RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir --no-deps \
     torch==2.5.1 \
     torchvision==0.20.1 \
     torchaudio==2.5.1 \
-    --index-url ${TORCH_INDEX_URL}
+    --extra-index-url ${TORCH_INDEX_URL}
 
+# Встановлюємо базові залежності PyTorch
+RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
+    filelock \
+    typing-extensions \
+    sympy \
+    networkx \
+    jinja2 \
+    fsspec \
+    numpy
+
+# Встановлюємо requirements.txt якщо є
 RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
 
-# xformers для cu124 (найновіша версія)
+# xformers для cu124
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers || true
 
 # Створюємо глобальні симлінки для pip/python
