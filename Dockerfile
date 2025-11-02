@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# Використовуємо CUDA 11.8 runtime для максимальної сумісності та уникнення конфліктів libnvJitLink
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS base
+# Використовуємо CUDA 12.4 runtime для сумісності з драйвером 580.x (CUDA 13.0)
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -34,27 +34,27 @@ WORKDIR /opt/ComfyUI
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel setuptools
 
-# Використовуємо cu118 для CUDA 11.8, щоб уникнути невідповідності з рекомендованою збіркою
-ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118
+# Використовуємо cu124 - найновіший доступний PyTorch для вашого драйвера
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
-    torch==2.4.1 \
-    torchvision==0.19.1 \
-    torchaudio==2.4.1 \
+    torch==2.5.1 \
+    torchvision==0.20.1 \
+    torchaudio==2.5.1 \
     --index-url ${TORCH_INDEX_URL}
 
 RUN if [ -f requirements.txt ]; then \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
 
-# xformers для cu118 (версія 0.0.27.x сумісна з PyTorch 2.4.1+cu118; 0.0.28.x потребує cu121)
-RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers==0.0.27.post2 || true
+# xformers для cu124 (найновіша версія)
+RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers || true
 
-# Створюємо глобальні симлінки для pip/python, щоб ComfyUI-Manager бачив їх
+# Створюємо глобальні симлінки для pip/python
 RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
     ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
     ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
 
-# Додаємо venv/bin до PATH глобально
+# Додаємо venv/bin до PATH
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
 FROM base AS runtime
@@ -68,7 +68,7 @@ RUN mkdir -p /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output \
              /opt/ComfyUI/custom_nodes /opt/ComfyUI/user && \
     chown -R comfyui:comfyui /opt/ComfyUI
 
-# Додаємо PATH у .bashrc для користувача comfyui
+# Додаємо PATH у .bashrc
 RUN echo 'export PATH="/opt/ComfyUI/venv/bin:${PATH}"' >> /home/comfyui/.bashrc
 
 USER comfyui
