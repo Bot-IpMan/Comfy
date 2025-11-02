@@ -124,6 +124,25 @@ if [[ ${#args[@]} -eq 0 ]]; then
 fi
 
 if ! check_cuda_available; then
+  # Remove GPU-specific memory presets that conflict with --cpu
+  gpu_memory_flags=(--gpu-only --highvram --normalvram --lowvram --novram)
+  if [[ ${#args[@]} -gt 0 ]]; then
+    filtered_args=()
+    for arg in "${args[@]}"; do
+      skip=false
+      for flag in "${gpu_memory_flags[@]}"; do
+        if [[ "${arg}" == "${flag}" ]]; then
+          skip=true
+          break
+        fi
+      done
+      if ! $skip; then
+        filtered_args+=("${arg}")
+      fi
+    done
+    args=("${filtered_args[@]}")
+  fi
+
   if [[ " ${args[*]} " != *" --cpu "* ]]; then
     args+=(--cpu)
   fi
