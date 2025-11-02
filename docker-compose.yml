@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # За замовчуванням використовуємо cu118, що відповідає базовому образу CUDA 11.8 runtime
+        # За замовчуванням використовуємо cu118, який узгоджений із базовим образом CUDA 11.8
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu118}
     container_name: comfyui
     restart: unless-stopped
