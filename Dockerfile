@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Використовуємо CUDA 11.8 runtime для максимальної сумісності і уникнення конфліктів libnvJitLink
+# Використовуємо CUDA 11.8 runtime для максимальної сумісності та уникнення конфліктів libnvJitLink
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
