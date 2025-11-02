@@ -105,16 +105,14 @@ sys.exit(0 if available else 1)
 PY
 }
 
+declare -a args
 if [[ $# -gt 0 ]]; then
   if [[ "$1" == -* ]]; then
-    exec python -u main.py "$@"
+    args=("$@")
   else
     exec "$@"
   fi
-fi
-
-declare -a args
-if [[ -n "${CLI_ARGS:-}" ]]; then
+elif [[ -n "${CLI_ARGS:-}" ]]; then
   # shellcheck disable=SC2206
   args=( ${CLI_ARGS} )
 fi
