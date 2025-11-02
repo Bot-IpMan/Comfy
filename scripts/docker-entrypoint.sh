@@ -59,17 +59,39 @@ if not path.exists():
     raise SystemExit(0)
 
 code = path.read_text()
-needle = "    return torch.device(torch.cuda.current_device())"
+needle = "return torch.device(torch.cuda.current_device())"
 
 if needle not in code:
     raise SystemExit(0)
 
-replacement = """    try:\n        current_device = torch.cuda.current_device()\n    except Exception:  # pragma: no cover - safety net for non-CUDA environments\n        return torch.device(\"cpu\")\n    return torch.device(current_device)"""
+import re
 
-if replacement in code:
+match = re.search(r"^(\s*)" + re.escape(needle), code, flags=re.MULTILINE)
+if not match:
     raise SystemExit(0)
 
-path.write_text(code.replace(needle, replacement))
+indent = match.group(1)
+
+existing_patch = re.escape("\n".join((
+    f"{indent}try:",
+    f"{indent}    current_device = torch.cuda.current_device()",
+    f"{indent}except Exception:  # pragma: no cover - safety net for non-CUDA environments",
+    f"{indent}    return torch.device(\"cpu\")",
+    f"{indent}return torch.device(current_device)"
+)))
+
+if re.search(existing_patch, code):
+    raise SystemExit(0)
+
+replacement = "\n".join((
+    f"{indent}try:",
+    f"{indent}    current_device = torch.cuda.current_device()",
+    f"{indent}except Exception:  # pragma: no cover - safety net for non-CUDA environments",
+    f"{indent}    return torch.device(\"cpu\")",
+    f"{indent}return torch.device(current_device)"
+))
+
+path.write_text(code.replace(f"{indent}{needle}", replacement))
 PY
 }
 
