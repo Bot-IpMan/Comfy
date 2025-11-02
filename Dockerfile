@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -29,13 +27,9 @@ WORKDIR /opt
 COPY --chown=comfyui:comfyui ComfyUI /opt/ComfyUI
 WORKDIR /opt/ComfyUI
 
+# Створюємо venv
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel setuptools
-
-# Створюємо глобальні симлінки для pip та python з віртуального середовища
-RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
-    ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
-    ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
 
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
@@ -51,6 +45,12 @@ RUN if [ -f requirements.txt ]; then \
 # Опціонально: xformers для оптимізації
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers==0.0.28.post2 || true
 
+# Створюємо глобальні симлінки ПІСЛЯ встановлення всіх пакетів
+RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
+    ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
+    ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
+
+# Додаємо venv/bin до PATH глобально
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
 FROM base AS runtime
@@ -59,6 +59,7 @@ USER root
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Створюємо каталоги
 RUN mkdir -p /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output \
              /opt/ComfyUI/custom_nodes /opt/ComfyUI/user && \
     chown -R comfyui:comfyui /opt/ComfyUI
