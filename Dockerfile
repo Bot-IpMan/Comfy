@@ -34,7 +34,7 @@ WORKDIR /opt/ComfyUI
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel setuptools
 
-# Використовуємо cu118 для CUDA 11.8 - стабільна зв'язка без конфліктів символів
+# Використовуємо cu118 для CUDA 11.8, щоб уникнути невідповідності з рекомендованою збіркою
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
     torch==2.4.1 \
