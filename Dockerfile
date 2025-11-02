@@ -1,3 +1,4 @@
+# Використовуємо стабільну зв'язку CUDA 12.1 + cuDNN 8 для сумісності з PyTorch 2.4.1 (cu121)
 FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -31,6 +32,7 @@ WORKDIR /opt/ComfyUI
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel setuptools
 
+# Повертаємо стандартний індекс PyTorch на cu121, щоб уникнути конфліктів libnvJitLink
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
     torch==2.4.1 \
@@ -45,7 +47,7 @@ RUN if [ -f requirements.txt ]; then \
 # Опціонально: xformers для оптимізації
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers==0.0.28.post2 || true
 
-# Створюємо глобальні симлінки ПІСЛЯ встановлення всіх пакетів
+# Створюємо глобальні симлінки ПІСЛЯ встановлення всіх пакетів, щоб ComfyUI-Manager бачив pip/python
 RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
     ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
     ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
