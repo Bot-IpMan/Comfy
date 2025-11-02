@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -28,17 +29,19 @@ WORKDIR /opt
 COPY --chown=comfyui:comfyui ComfyUI /opt/ComfyUI
 WORKDIR /opt/ComfyUI
 
-# Виконуємо збірку від імені користувача
-USER comfyui
-
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip wheel setuptools
 
-ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+# Створюємо глобальні симлінки для pip та python з віртуального середовища
+RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
+    ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
+    ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
+
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
-    torch==2.5.1 \
-    torchvision==0.20.1 \
-    torchaudio==2.5.1 \
+    torch==2.4.1 \
+    torchvision==0.19.1 \
+    torchaudio==2.4.1 \
     --index-url ${TORCH_INDEX_URL}
 
 RUN if [ -f requirements.txt ]; then \
@@ -46,24 +49,20 @@ RUN if [ -f requirements.txt ]; then \
     fi
 
 # Опціонально: xformers для оптимізації
-RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers==0.0.28.post1 || true
-
-# ВИДАЛЕНО: блок з sitecustomize.py, який форсував CPU режим
-# Тепер GPU буде доступна!
+RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir xformers==0.0.28.post2 || true
 
 ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
 
-# Повертаємося до root для копіювання entrypoint
+FROM base AS runtime
+
 USER root
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Створюємо необхідні каталоги з правильними правами
 RUN mkdir -p /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output \
              /opt/ComfyUI/custom_nodes /opt/ComfyUI/user && \
     chown -R comfyui:comfyui /opt/ComfyUI
 
-# Знову переключаємося на користувача
 USER comfyui
 
 EXPOSE 8188
