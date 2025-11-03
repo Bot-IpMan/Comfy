@@ -9,8 +9,9 @@ services:
     container_name: comfyui
     restart: unless-stopped
     user: "1000:1000"
-    
-    # ДОДАЙТЕ ЦІ РЯДКИ:
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
     cap_add:
       - IPC_LOCK
       - SYS_NICE
