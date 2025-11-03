@@ -46,15 +46,22 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir --no-deps \
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
     filelock typing-extensions sympy networkx jinja2 fsspec numpy pillow
 
-# Встановлюємо requirements БЕЗ xformers
+# Встановлюємо requirements, попередньо прибравши xformers
 RUN if [ -f requirements.txt ]; then \
-        grep -v "xformers" requirements.txt > requirements_no_xformers.txt || true; \
-        if [ -s requirements_no_xformers.txt ]; then \
-            /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements_no_xformers.txt; \
-        fi; \
-    fi
+        /opt/ComfyUI/venv/bin/python - <<'PY'; \
+from pathlib import Path
+import re
 
-# НЕ встановлюємо xformers - він тягне torch 2.8.0!
+req_path = Path('requirements.txt')
+pattern = re.compile(r"^\s*xformers(?:\s|[<>=!~;#]|$)", re.IGNORECASE)
+if req_path.exists():
+    lines = req_path.read_text().splitlines()
+    filtered = [line for line in lines if not pattern.match(line)]
+    if filtered != lines:
+        req_path.write_text("\n".join(filtered) + ("\n" if filtered else ""))
+PY
+        /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 # Створюємо симлінки
 RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
