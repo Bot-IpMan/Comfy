@@ -100,6 +100,40 @@ Error response from daemon: Head "https://ghcr.io/v2/comfyanonymous/comfyui/mani
 - **Вимкніть залежні сервіси**. Не активуйте профіль `rife`, якщо немає можливості автентифікуватися в GHCR.
 - **Вкажіть інше джерело образу.** Можна знайти альтернативні збірки на Docker Hub чи в інших реєстрах і замінити `RIFE_IMAGE` або `COMFYUI_IMAGE` у `.env`.
 
+## Помилка `no-cgroups вимкнено` в діагностиці GPU
+
+Якщо при виконанні діагностичних скриптів бачите повідомлення `ERROR: no-cgroups вимкнено`, це означає, що NVIDIA Container Runtime
+запускається без підтримки cgroups. Через це Docker не може коректно застосовувати ліміти до GPU-пристроїв усередині контейнерів, а
+деякі утиліти (`nvidia-smi`, PyTorch) можуть працювати нестабільно.
+
+Типові симптоми на хості з вимкненими cgroups:
+
+```text
+comfyui  | /opt/ComfyUI/venv/lib/python3.10/site-packages/torch/cuda/__init__.py:129: UserWarning: CUDA initialization: Unexpected error from cudaGetDeviceCount()... Error 304: OS call failed or operation not supported on this OS
+comfyui  | Device: cpu
+comfyui  | PermissionError: [Errno 13] Permission denied
+```
+
+PyTorch у такому випадку бачить лише CPU, а подальше створення asyncio-петлі може падати з `PermissionError: socketpair`, якщо контейнер працює з дефолтним seccomp-профілем.
+
+Щоб виправити ситуацію:
+
+1. Відкрийте файл `/etc/nvidia-container-runtime/config.toml` на хості та знайдіть параметр `no-cgroups`.
+2. Змініть значення на `true`:
+   ```toml
+   no-cgroups = true
+   ```
+3. Перезапустіть Docker, щоб застосувати зміни:
+   ```bash
+   sudo systemctl restart docker
+   ```
+4. У типовій `docker-compose.yml` цього репозиторію сервіс `comfyui` вже запускається з `privileged: true`, `security_opt: ["seccomp=unconfined"]`
+   та додатковими capabilities (`IPC_LOCK`, `SYS_NICE`). Це забезпечує коректну роботу на хостах Proxmox/LXC і прибирає `PermissionError`
+   під час створення `socketpair`. Якщо ви запускаєте на звичайному Docker Engine без LXC, ці параметри можна прибрати для більш
+   строгого режиму безпеки.
+
+Після перезавантаження сервісу і (за потреби) оновлення Compose-конфігурації повторіть діагностику — попередження зникне, а GPU буде коректно доступним у контейнерах. Повідомлення виду `Skipping cache drop: /proc/sys/vm/drop_caches is not writable` можна ігнорувати: воно лише означає, що хост не дозволяє скидати сторінковий кеш із контейнера.
+
 ## Налаштування під GPU з 4 ГБ
 
 Файл `docker-compose.yml` уже містить такі ключові параметри:
