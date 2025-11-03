@@ -42,7 +42,11 @@ services:
       CUDA_DEVICE_ORDER: "PCI_BUS_ID"
       CUDA_VISIBLE_DEVICES: "0"
       LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:128"
+      ATEN_CPU_CAPABILITY: "sse2"
+      ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512"
+      MKL_DEBUG_CPU_TYPE: "5"             # змушує MKL/oneDNN йти по SSE2-гілці
+      PYTORCH_CUDA_ALLOC_CONF: "backend:cudaMalloc,max_split_size_mb:128"
+      XFORMERS_DISABLED: "1"
       MALLOC_ARENA_MAX: "2"
       CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --preview-method none"
 
