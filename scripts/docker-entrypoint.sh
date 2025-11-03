@@ -103,6 +103,47 @@ PY
 
 ensure_cpu_fallback_patch || true
 
+ensure_allocator_patch() {
+  python - <<'PY'
+from pathlib import Path
+
+path = Path("comfy/model_management.py")
+if not path.exists():
+    raise SystemExit(0)
+
+code = path.read_text()
+
+marker = "legacy_device = any(torch.cuda.get_device_capability"
+if marker in code:
+    raise SystemExit(0)
+
+import re
+
+pattern = re.compile(r"^(\s*)torch\\.cuda\\.memory\\.change_current_allocator\((\"|')cudaMallocAsync(\"|')\)", re.MULTILINE)
+
+def replace(match):
+    indent = match.group(1)
+    return "\n".join((
+        f"{indent}if torch.cuda.is_available():",
+        f"{indent}    try:",
+        f"{indent}        legacy_device = any(torch.cuda.get_device_capability(i)[0] < 7 for i in range(torch.cuda.device_count()))",
+        f"{indent}    except Exception:",
+        f"{indent}        legacy_device = False",
+        f"{indent}    if legacy_device:",
+        f"{indent}        torch.cuda.memory.change_current_allocator(\"cudaMalloc\")",
+        f"{indent}    else:",
+        f"{indent}        torch.cuda.memory.change_current_allocator(\"cudaMallocAsync\")",
+    )) + "\n"
+
+new_code, count = pattern.subn(replace, code)
+
+if count:
+    path.write_text(new_code)
+PY
+}
+
+ensure_allocator_patch || true
+
 # Очищуємо кеш перед стартом (якщо можливо)
 sync
 if [[ -f /proc/sys/vm/drop_caches && -w /proc/sys/vm/drop_caches ]]; then
