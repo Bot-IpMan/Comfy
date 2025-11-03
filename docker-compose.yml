@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
     container_name: comfyui
     restart: unless-stopped
     user: "1000:1000"
@@ -44,13 +44,13 @@ services:
       CUDA_DEVICE_ORDER: "PCI_BUS_ID"
       CUDA_VISIBLE_DEVICES: "0"
       LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-      PYTORCH_ALLOC_CONF: "max_split_size_mb:256,expandable_segments:True,garbage_collection_threshold:0.8"
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:128"
       MALLOC_ARENA_MAX: "2"
-      CLI_ARGS: "--listen --port 8188 --preview-method auto --lowvram"
+      CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --preview-method none"
 
     command: /usr/local/bin/docker-entrypoint.sh
 
-    shm_size: 6gb
+    shm_size: 8gb
     ulimits:
       memlock: -1
       stack: 268435456

@@ -31,12 +31,13 @@ WORKDIR /opt/ComfyUI
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip==24.0
 
-# Встановлюємо PyTorch БЕЗ залежностей
-ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+# Встановлюємо PyTorch БЕЗ залежностей (стабільна гілка 2.3 для Pascal GPU).
+# За потреби перейдіть на інший індекс/версії (наприклад, колеса +cu124).
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir --no-deps \
-    torch==2.5.1 \
-    torchvision==0.20.1 \
-    torchaudio==2.5.1 \
+    torch==2.3.1+cu121 \
+    torchvision==0.18.1+cu121 \
+    torchaudio==2.3.1+cu121 \
     --extra-index-url ${TORCH_INDEX_URL}
 
 # Додаємо базові залежності

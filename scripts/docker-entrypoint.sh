@@ -49,6 +49,12 @@ ensure_source_tree() {
 
 ensure_source_tree
 
+# Backwards compatibility: honour legacy PYTORCH_ALLOC_CONF values when the
+# CUDA-specific variant is missing.
+if [[ -n "${PYTORCH_ALLOC_CONF:-}" && -z "${PYTORCH_CUDA_ALLOC_CONF:-}" ]]; then
+  export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_ALLOC_CONF}"
+fi
+
 # Ensure ComfyUI uses a CPU fallback when CUDA is unavailable
 ensure_cpu_fallback_patch() {
   python - <<'PY'
@@ -127,6 +133,42 @@ sys.exit(0 if available else 1)
 PY
 }
 
+needs_legacy_allocator() {
+  if ! command -v python >/dev/null 2>&1; then
+    return 1
+  fi
+
+  python - <<'PY'
+import sys
+
+try:
+    import torch
+except Exception:
+    sys.exit(1)
+
+if not torch.cuda.is_available():
+    sys.exit(1)
+
+try:
+    device_count = torch.cuda.device_count()
+except Exception:
+    sys.exit(1)
+
+if device_count == 0:
+    sys.exit(1)
+
+for index in range(device_count):
+    try:
+        major, _ = torch.cuda.get_device_capability(index)
+    except Exception:
+        continue
+    if major < 7:
+        sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
 declare -a args
 if [[ $# -gt 0 ]]; then
   if [[ "$1" == -* ]]; then
@@ -143,7 +185,43 @@ if [[ ${#args[@]} -eq 0 ]]; then
   args=(--listen --port 8188)
 fi
 
-if ! check_cuda_available; then
+gpu_available=false
+if check_cuda_available; then
+  gpu_available=true
+else
+  gpu_available=false
+fi
+
+if ${gpu_available}; then
+  if needs_legacy_allocator; then
+    base_conf="${PYTORCH_CUDA_ALLOC_CONF:-${PYTORCH_ALLOC_CONF:-}}"
+    sanitized=$(PYTORCH_CONF_RAW="${base_conf}" python - <<'PY'
+import os
+
+conf = os.environ.get("PYTORCH_CONF_RAW", "")
+parts = []
+for raw in conf.split(","):
+    item = raw.strip()
+    if not item:
+        continue
+    key = item.split(":", 1)[0].strip().lower()
+    if key in {"backend", "expandable_segments"}:
+        continue
+    parts.append(item)
+
+print(",".join(parts))
+PY
+)
+    if [[ -n "${sanitized}" ]]; then
+      export PYTORCH_CUDA_ALLOC_CONF="backend:cudaMalloc,${sanitized}"
+    else
+      export PYTORCH_CUDA_ALLOC_CONF="backend:cudaMalloc"
+    fi
+    echo "[docker-entrypoint] Falling back to legacy cudaMalloc allocator (compute capability < 7.0)" >&2
+  fi
+fi
+
+if ! ${gpu_available}; then
   # Remove GPU-specific memory presets that conflict with --cpu and ensure
   # we only pass a single --cpu flag.
   gpu_memory_flags=(--gpu-only --highvram --normalvram --lowvram --novram)
