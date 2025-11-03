@@ -56,7 +56,7 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
     filelock typing-extensions sympy networkx jinja2 fsspec numpy pillow
 
 # Прибираємо xformers з requirements.txt та інсталюємо решту
-RUN <<'BASH'
+RUN /bin/bash <<'BASH'
 set -euo pipefail
 if [ -f requirements.txt ]; then
   /opt/ComfyUI/venv/bin/python - <<'PY'
