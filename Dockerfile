@@ -57,7 +57,7 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
 
 # Встановлюємо requirements, попередньо прибравши xformers
 RUN if [ -f requirements.txt ]; then \
-        /opt/ComfyUI/venv/bin/python - <<'PY'
+        /opt/ComfyUI/venv/bin/python - <<'PY' \
 from pathlib import Path
 import re
 
@@ -68,7 +68,7 @@ if req_path.exists():
     filtered = [line for line in lines if not pattern.match(line)]
     if filtered != lines:
         req_path.write_text("\n".join(filtered) + ("\n" if filtered else ""))
-PY
+PY \
         /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
     fi
 
