@@ -57,7 +57,7 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
 
 # Встановлюємо requirements, попередньо прибравши xformers
 RUN if [ -f requirements.txt ]; then \
-        /opt/ComfyUI/venv/bin/python - <<'PY'; \
+        /opt/ComfyUI/venv/bin/python - <<'PY'
 from pathlib import Path
 import re
 
