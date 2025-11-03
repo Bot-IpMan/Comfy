@@ -10,6 +10,29 @@
    - Перевірити видимість GPU для Docker: `docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi`.
 4. Достатньо місця на диску: моделі ComfyUI можуть займати десятки гігабайт.
 
+## GPU-конфігурація в `docker-compose.yml`
+
+За замовчуванням сервіс `comfyui` використовує синтаксис `device_requests`, підтримуваний Docker Compose 1.41+/Docker Engine 24.0+:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - capabilities: ["gpu"]
+```
+
+Якщо у вашому середовищі досі застосовується попередній (legacy) синтаксис NVIDIA Container Runtime, замініть фрагмент вище на:
+
+```yaml
+runtime: nvidia
+environment:
+  - NVIDIA_VISIBLE_DEVICES=all
+  - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+```
+
+Обидва варіанти забезпечують доступ контейнера до усіх доступних GPU. Оберіть той, який підтримується вашою версією Docker/Compose.
+
 ## Швидкий старт
 
 1. Скопіюйте файл змінних середовища та, за потреби, відредагуйте значення:
