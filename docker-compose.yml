@@ -5,12 +5,16 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Використовуємо cu124 для драйвера 580.x (CUDA 13.0)
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
     container_name: comfyui
     restart: unless-stopped
     user: "1000:1000"
-
+    
+    # ДОДАЙТЕ ЦІ РЯДКИ:
+    cap_add:
+      - IPC_LOCK
+      - SYS_NICE
+    
     dns:
       - 8.8.8.8
       - 1.1.1.1
