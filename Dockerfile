@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS base
 
@@ -23,9 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cuda-nvrtc-dev-12-4 \
     && rm -rf /var/lib/apt/lists/*
 
+# Підстраховка для libnvrtc-builtins під sm_61 (GTX 1050 Ti)
 RUN set -eux; \
     for libdir in /usr/local/cuda/lib64 /usr/local/cuda/targets/x86_64-linux/lib; do \
-        if [ -f "${libdir}/libnvrtc-builtins.so" ]; then \
+        if [ -f "${libdir}/libnvrtc-builtins.so" ] && [ ! -e "${libdir}/libnvrtc-builtins-sm_61.so" ]; then \
             ln -sf libnvrtc-builtins.so "${libdir}/libnvrtc-builtins-sm_61.so"; \
         fi; \
     done
@@ -40,8 +41,7 @@ WORKDIR /opt/ComfyUI
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip==24.0
 
-# Встановлюємо PyTorch БЕЗ залежностей (cuda 12.4 сумісні колеса).
-# За потреби змініть змінні TORCH_VERSION/TORCH_VARIANT/TORCH_INDEX_URL.
+# Встановлюємо PyTorch (колеса під CUDA 12.4)
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 ARG TORCH_VERSION=2.4.1
 ARG TORCH_VARIANT=+cu124
@@ -51,13 +51,15 @@ RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir --no-deps \
     torchaudio==2.4.1${TORCH_VARIANT} \
     --extra-index-url ${TORCH_INDEX_URL}
 
-# Додаємо базові залежності
+# Базові залежності Python
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
     filelock typing-extensions sympy networkx jinja2 fsspec numpy pillow
 
-# Встановлюємо requirements, попередньо прибравши xformers
-RUN if [ -f requirements.txt ]; then \
-        /opt/ComfyUI/venv/bin/python - <<'PY'; \
+# Прибираємо xformers з requirements.txt та інсталюємо решту
+RUN <<'BASH'
+set -euo pipefail
+if [ -f requirements.txt ]; then
+  /opt/ComfyUI/venv/bin/python - <<'PY'
 from pathlib import Path
 import re
 
@@ -69,10 +71,11 @@ if req_path.exists():
     if filtered != lines:
         req_path.write_text("\n".join(filtered) + ("\n" if filtered else ""))
 PY
-        /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt; \
-    fi
+  /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt
+fi
+BASH
 
-# Створюємо симлінки
+# Симлінки на інструменти з venv
 RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
     ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
     ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
