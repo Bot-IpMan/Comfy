@@ -19,7 +19,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     wget \
     curl \
+    cuda-nvrtc-12-4 \
+    cuda-nvrtc-dev-12-4 \
     && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    for libdir in /usr/local/cuda/lib64 /usr/local/cuda/targets/x86_64-linux/lib; do \
+        if [ -f "${libdir}/libnvrtc-builtins.so" ]; then \
+            ln -sf libnvrtc-builtins.so "${libdir}/libnvrtc-builtins-sm_61.so"; \
+        fi; \
+    done
 
 RUN groupadd -g 1000 comfyui && \
     useradd -m -u 1000 -g comfyui comfyui
