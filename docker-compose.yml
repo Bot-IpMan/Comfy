@@ -45,7 +45,7 @@ services:
       ATEN_CPU_CAPABILITY: "sse2"
       ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512"
       MKL_DEBUG_CPU_TYPE: "5"             # змушує MKL/oneDNN йти по SSE2-гілці
-      PYTORCH_CUDA_ALLOC_CONF: "backend:cudaMalloc,max_split_size_mb:128"
+      PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
       XFORMERS_DISABLED: "1"
       MALLOC_ARENA_MAX: "2"
       CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --preview-method none"
