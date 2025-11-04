@@ -49,7 +49,7 @@ services:
       # НЕ задавай ATEN_CPU_CAPABILITY зі значенням sse2 — PyTorch його ігнорує
       XFORMERS_DISABLED: "1"
       MALLOC_ARENA_MAX: "2"
-      CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --force-fp32 --fp32-text-enc --preview-method none"
+      CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none"
 
     command: /usr/local/bin/docker-entrypoint.sh
 
