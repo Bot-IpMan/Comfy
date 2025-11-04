@@ -52,10 +52,10 @@ ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 RUN /opt/ComfyUI/venv/bin/pip uninstall -y torch torchvision torchaudio || true
 
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
+    --index-url ${TORCH_INDEX_URL} \
     torch==${TORCH_VERSION}+${CUDA_VARIANT} \
-    torchvision==${TORCHVISION_VERSION}+${CUDA_VARIANT} \
-    torchaudio==${TORCHAUDIO_VERSION}+${CUDA_VARIANT} \
-    --index-url ${TORCH_INDEX_URL}
+    torchvision==${TORCHVISION_VERSION}+${CUDA_VARIIANT} \
+    torchaudio==${TORCHAUDIO_VERSION}+${CUDA_VARIANT}
 
 
 # Базові залежності Python
