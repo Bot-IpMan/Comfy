@@ -46,6 +46,10 @@ services:
       MKL_DEBUG_CPU_TYPE: "5"             # змушує MKL/oneDNN йти по SSE2-гілці
       # або прибрати взагалі цей рядок, щоб лишився дефолтний native
       PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
       # НЕ задавай ATEN_CPU_CAPABILITY зі значенням sse2 — PyTorch його ігнорує
       XFORMERS_DISABLED: "1"
       MALLOC_ARENA_MAX: "2"
