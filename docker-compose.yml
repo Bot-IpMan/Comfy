@@ -1,28 +1,55 @@
-version: "3.9"
-
 services:
   comfyui:
-    image: ${COMFYUI_IMAGE:-comfyui:local}
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+    image: ${COMFYUI_IMAGE:-comfyui:local}
     container_name: comfyui
     restart: unless-stopped
 
-    privileged: true
-    security_opt:
-      - seccomp=unconfined
-    cap_add:
-      - IPC_LOCK
-      - SYS_NICE
+    # дає Docker'у GPU у звичайному (не swarm) compose
+    device_requests:
+      - driver: nvidia
+        count: 1
+        capabilities: ["gpu"]
 
-    gpus: all
+    environment:
+      # видимість та можливості NVIDIA
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+      CUDA_DEVICE_ORDER: "PCI_BUS_ID"
+      CUDA_VISIBLE_DEVICES: "0"
 
-    ports:
-      - "8188:8188"
+      # критично для LXC: nvidia-container-runtime без cgroups
+      # (ти вже маєш no-cgroups=true в /etc/nvidia-container-runtime/config.toml) 
+      # джерело: обхід для LXC/LXD :contentReference[oaicite:8]{index=8}
 
+      # ↓ усе з Dockerfile продубльовано, щоб було видно й тут:
+      GLIBC_TUNABLES: "glibc.cpu.hwcaps=-AVX_Usable,-AVX2_Usable,-AVX_Fast_Unaligned_Load,-ERMS"
+      ONEDNN_MAX_CPU_ISA: "SSE41"
+      ATEN_CPU_CAPABILITY: "default"
+      ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512,avx512_vnni,fma4"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
+      XFORMERS_DISABLED: "1"
+      PYTHONNOUSERSITE: "1"
+
+      # Прапори запуску ComfyUI — мінімальний тиск на VRAM/CPU
+      CLI_ARGS: >-
+        --listen --port 8188
+        --lowvram --disable-smart-memory
+        --preview-method none
+        --fp32-text-enc
+        --disable-cuda-malloc
+        --disable-all-custom-nodes
+
+    # важливо: без зайвих пробілів/слешів, щоб не зламати argparse
+    command: ["/usr/local/bin/docker-entrypoint.sh"]
+
+    # зручні мапінги
     volumes:
       - ./comfyui/models:/opt/ComfyUI/models
       - ./comfyui/input:/opt/ComfyUI/input
@@ -30,39 +57,11 @@ services:
       - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
       - ./comfyui/user:/opt/ComfyUI/user
 
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - CUDA_DEVICE_ORDER=PCI_BUS_ID
-      - CUDA_VISIBLE_DEVICES=0
-      - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+    ports:
+      - "8188:8188"
 
-      # Безпечний CUDA-аллокатор (допустимі: native | cudaMallocAsync)
-      - PYTORCH_CUDA_ALLOC_CONF=backend:native,max_split_size_mb:128
-
-      # Вимикаємо AVX-гілки на старому CPU
-      - ATEN_CPU_CAPABILITY=default
-      - ATEN_DISABLE_CPU_CAPABILITY=avx,avx2,avx512,avx512_vnni,fma4
-      - GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-AVX512F
-
-      # Менше гонок у BLAS/oneDNN
-      - OMP_NUM_THREADS=1
-      - MKL_NUM_THREADS=1
-      - OPENBLAS_NUM_THREADS=1
-      - NUMEXPR_NUM_THREADS=1
-
-      # Не ставимо xFormers
-      - XFORMERS_DISABLED=1
-
-      # Обмеження арен malloc
-      - MALLOC_ARENA_MAX=2
-
-      # ВАЖЛИВО: один рядок, без бекслешів і переносів!
-      - CLI_ARGS=--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes
-
-    command: /usr/local/bin/docker-entrypoint.sh
-
-    shm_size: 8gb
+    # стабільність
+    shm_size: "2gb"
     ulimits:
       memlock: -1
       stack: 268435456
@@ -71,8 +70,8 @@ services:
         hard: 65536
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 90s
