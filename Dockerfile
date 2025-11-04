@@ -1,108 +1,66 @@
-# syntax=docker/dockerfile:1.7
-
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS base
+# Базовий образ з CUDA 12.1 (Pascal ок) і старішим glibc ніж у Debian 13
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
+# мінімум для Python 3.10 + git + системні залежності
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-venv \
-    git \
-    ffmpeg \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    wget \
-    curl \
-    cuda-nvrtc-12-4 \
-    cuda-nvrtc-dev-12-4 \
+    python3.10 python3.10-venv python3.10-distutils python3-pip \
+    git curl ca-certificates wget unzip libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Підстраховка для libnvrtc-builtins під sm_61 (GTX 1050 Ti)
-RUN set -eux; \
-    for libdir in /usr/local/cuda/lib64 /usr/local/cuda/targets/x86_64-linux/lib; do \
-        if [ -f "${libdir}/libnvrtc-builtins.so" ] && [ ! -e "${libdir}/libnvrtc-builtins-sm_61.so" ]; then \
-            ln -sf libnvrtc-builtins.so "${libdir}/libnvrtc-builtins-sm_61.so"; \
-        fi; \
-    done
-
-RUN groupadd -g 1000 comfyui && \
-    useradd -m -u 1000 -g comfyui comfyui
-
-WORKDIR /opt
-COPY --chown=comfyui:comfyui ComfyUI /opt/ComfyUI
+# Створюємо робочий каталог і venv
 WORKDIR /opt/ComfyUI
+RUN python3.10 -m venv /opt/ComfyUI/venv
+ENV PATH=/opt/ComfyUI/venv/bin:$PATH
 
-RUN python3 -m venv /opt/ComfyUI/venv && \
-    /opt/ComfyUI/venv/bin/pip install --upgrade pip==24.0
+# Клонуємо ComfyUI (можеш змінити на свій форк/коміт)
+ARG COMFY_REPO="https://github.com/comfyanonymous/ComfyUI.git"
+ARG COMFY_REF="master"
+RUN git clone --depth=1 -b ${COMFY_REF} ${COMFY_REPO} /opt/ComfyUI/src
 
-# ---- Pascal-friendly PyTorch ----
-ARG TORCH_VERSION=2.3.1
-ARG TORCHVISION_VERSION=0.18.1
-ARG TORCHAUDIO_VERSION=2.3.1
-ARG CUDA_VARIANT=cu121
-ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
+# Встановлюємо залежності (без xformers)
+COPY comfyui/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r /tmp/requirements.txt
 
-# (опційно) приберемо залишки, якщо щось стоїть
-RUN /opt/ComfyUI/venv/bin/pip uninstall -y torch torchvision torchaudio || true
+# Пін інструментів PyTorch під CUDA 12.1 (саме 2.3.0, не 2.3.1)
+# офіційний індекс для cu121
+RUN pip install \
+  torch==2.3.0+cu121 torchvision==0.18.0+cu121 torchaudio==2.3.0+cu121 \
+  --index-url https://download.pytorch.org/whl/cu121
 
-RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
-  https://download.pytorch.org/whl/cu121/torch-2.3.1%2Bcu121-cp310-cp310-linux_x86_64.whl \
-  https://download.pytorch.org/whl/cu121/torchvision-0.18.1%2Bcu121-cp310-cp310-linux_x86_64.whl \
-  https://download.pytorch.org/whl/cu121/torchaudio-2.3.1%2Bcu121-cp310-cp310-linux_x86_64.whl
+# Створюємо структуру каталогів під моделі/IO/user/custom_nodes
+RUN mkdir -p /opt/ComfyUI/{models,input,output,custom_nodes,user}
 
+# Енви для старого CPU (без AVX) + стабільність у LXC
+ENV \
+  # Жорстко відрізаємо AVX-реалізації glibc (memcpy/memmove/…)
+  GLIBC_TUNABLES="glibc.cpu.hwcaps=-AVX_Usable,-AVX2_Usable,-AVX_Fast_Unaligned_Load,-ERMS" \
+  # Просимо oneDNN (MKL-DNN) падати не вище SSE4.1
+  ONEDNN_MAX_CPU_ISA="SSE41" \
+  # Вимикаємо фічі в самій ATen (torch) на CPU
+  ATEN_CPU_CAPABILITY="default" \
+  ATEN_DISABLE_CPU_CAPABILITY="avx,avx2,avx512,avx512_vnni,fma4" \
+  # Менше потоків — менше шансів на гонки та краші в старому софті
+  OMP_NUM_THREADS="1" MKL_NUM_THREADS="1" OPENBLAS_NUM_THREADS="1" NUMEXPR_NUM_THREADS="1" \
+  # Безпечні для низької VRAM режими аллокатора
+  PYTORCH_CUDA_ALLOC_CONF="backend:native,max_split_size_mb:128" \
+  # Вимикаємо xformers усюди
+  XFORMERS_DISABLED="1" \
+  # Щоб Comfy не підхоплював випадкові юзер-пакети
+  PYTHONNOUSERSITE="1"
 
-# Базові залежності Python
-RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
-    filelock typing-extensions sympy networkx jinja2 fsspec numpy pillow
-
-# Прибираємо xformers з requirements.txt та інсталюємо решту
-RUN /bin/bash <<'BASH'
-set -euo pipefail
-if [ -f requirements.txt ]; then
-  /opt/ComfyUI/venv/bin/python - <<'PY'
-from pathlib import Path
-import re
-
-req_path = Path('requirements.txt')
-pattern = re.compile(r"^\s*xformers(?:\s|[<>=!~;#]|$)", re.IGNORECASE)
-if req_path.exists():
-    lines = req_path.read_text().splitlines()
-    filtered = [line for line in lines if not pattern.match(line)]
-    if filtered != lines:
-        req_path.write_text("\n".join(filtered) + ("\n" if filtered else ""))
-PY
-  /opt/ComfyUI/venv/bin/pip install --no-cache-dir -r requirements.txt
-fi
-BASH
-
-# Симлінки на інструменти з venv
-RUN ln -sf /opt/ComfyUI/venv/bin/pip /usr/local/bin/pip && \
-    ln -sf /opt/ComfyUI/venv/bin/python /usr/local/bin/python && \
-    ln -sf /opt/ComfyUI/venv/bin/python3 /usr/local/bin/python3
-
-ENV PATH="/opt/ComfyUI/venv/bin:${PATH}"
-
-FROM base AS runtime
-
-USER root
+# Легка обгортка-ентрипоінт
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-RUN mkdir -p /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output \
-             /opt/ComfyUI/custom_nodes /opt/ComfyUI/user && \
-    chown -R comfyui:comfyui /opt/ComfyUI
-
-RUN echo 'export PATH="/opt/ComfyUI/venv/bin:${PATH}"' >> /home/comfyui/.bashrc
-
-USER comfyui
-
 EXPOSE 8188
+WORKDIR /opt/ComfyUI/src
 
+# За замовчуванням — lowvram і максимально «щадні» прапори
+ENV CLI_ARGS="--listen --port 8188 --lowvram --disable-smart-memory --preview-method none --fp32-text-enc --disable-cuda-malloc --disable-all-custom-nodes"
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD []
