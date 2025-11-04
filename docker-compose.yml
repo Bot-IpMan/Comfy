@@ -5,20 +5,30 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        # Потрібні саме cu121-колеса Torch:
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
     container_name: comfyui
     restart: unless-stopped
-    user: "1000:1000"
+
+    # GPU доступ у LXC: у тебе вже ввімкнено no-cgroups=true на хості
+    # (залишаємо привілеї як було)
     privileged: true
     security_opt:
       - seccomp=unconfined
     cap_add:
       - IPC_LOCK
       - SYS_NICE
-    
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+
+    # Рекомендується сучасний спосіб позначити GPU:
+    gpus: all
+
+    # (Опціонально, якщо лишаєш старий шлях — можна залишити як дубль;
+    # у звичайному docker-compose "deploy" ігнорується)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
 
     ports:
       - "8188:8188"
@@ -30,32 +40,53 @@ services:
       - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
       - ./comfyui/user:/opt/ComfyUI/user
 
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: ["gpu"]
-
+    # Стабільні алокатор/CPU-шляхи, Low-VRAM та безпечний запуск
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - CUDA_DEVICE_ORDER=PCI_BUS_ID
       - CUDA_VISIBLE_DEVICES=0
       - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+      # Безпечний CUDA-аллокатор (підтримувані: native | cudaMallocAsync)
       - PYTORCH_CUDA_ALLOC_CONF=backend:native,max_split_size_mb:128
+
+      # Відключаємо AVX-гілки у PyTorch/oneDNN (старий CPU без AVX/AVX2)
       - ATEN_CPU_CAPABILITY=default
       - ATEN_DISABLE_CPU_CAPABILITY=avx,avx2,avx512,avx512_vnni,fma4
+
+      # Відрізаємо AVX-IFUNC у glibc (уникаємо __memmove_avx_* та подібних)
+      - GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-AVX512F
+
+      # Менше гонок у BLAS/oneDNN
       - OMP_NUM_THREADS=1
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
-      - GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-AVX512F
-      - XFORMERS_DISABLED=1
-      - MALLOC_ARENA_MAX=2
-      - CLI_ARGS=--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes
 
+      # Не ставимо xFormers (несумісні колеса для SM 6.1)
+      - XFORMERS_DISABLED=1
+
+      # Менше фрагментації heap у glibc
+      - MALLOC_ARENA_MAX=2
+
+      # Аргументи ComfyUI:
+      #  - fp16 на GPU для моделі (без --force-fp32)
+      #  - CLIP у FP32 на CPU (стабільно для твого CPU)
+      #  - вимкнути cudaMallocAsync
+      #  - lowvram + без preview + без smart memory
+      #  - на старті без custom nodes (включиш точково пізніше)
+      - CLI_ARGS=--listen --port 8188 \
+        --lowvram --disable-smart-memory \
+        --disable-cuda-malloc \
+        --fp32-text-enc \
+        --preview-method none \
+        --disable-all-custom-nodes
+
+    # entrypoint з твого репозиторію
     command: /usr/local/bin/docker-entrypoint.sh
 
+    # великий shm та ulimits — як у тебе
     shm_size: 8gb
     ulimits:
       memlock: -1
@@ -64,9 +95,11 @@ services:
         soft: 65536
         hard: 65536
 
+    # Проста перевірка — сторінка GUI повинна відповідати
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8188/ || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 120s
+
