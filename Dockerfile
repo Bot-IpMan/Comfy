@@ -41,15 +41,22 @@ WORKDIR /opt/ComfyUI
 RUN python3 -m venv /opt/ComfyUI/venv && \
     /opt/ComfyUI/venv/bin/pip install --upgrade pip==24.0
 
-# Встановлюємо PyTorch (колеса під CUDA 12.1, сумісніші з Pascal)
+# ---- Pascal-friendly PyTorch ----
 ARG TORCH_VERSION=2.3.1
+ARG TORCHVISION_VERSION=0.18.1
+ARG TORCHAUDIO_VERSION=2.3.1
 ARG CUDA_VARIANT=cu121
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
+
+# (опційно) приберемо залишки, якщо щось стоїть
+RUN /opt/ComfyUI/venv/bin/pip uninstall -y torch torchvision torchaudio || true
+
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
     torch==${TORCH_VERSION}+${CUDA_VARIANT} \
-    torchvision==0.18.1+${CUDA_VARIANT} \
-    torchaudio==2.3.1+${CUDA_VARIANT} \
+    torchvision==${TORCHVISION_VERSION}+${CUDA_VARIANT} \
+    torchaudio==${TORCHAUDIO_VERSION}+${CUDA_VARIANT} \
     --index-url ${TORCH_INDEX_URL}
+
 
 # Базові залежності Python
 RUN /opt/ComfyUI/venv/bin/pip install --no-cache-dir \
