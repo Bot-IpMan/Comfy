@@ -49,10 +49,10 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
-      - GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2,-AVX,-FMA,-AVX512F
+      - GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-AVX512F
       - XFORMERS_DISABLED=1
       - MALLOC_ARENA_MAX=2
-      - CLI_ARGS=--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none
+      - CLI_ARGS=--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes
 
     command: /usr/local/bin/docker-entrypoint.sh
 
