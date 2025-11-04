@@ -1,25 +1,31 @@
+version: "3.9"
+
 x-common-env: &common-env
   NVIDIA_VISIBLE_DEVICES: "all"
   NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
   CUDA_DEVICE_ORDER: "PCI_BUS_ID"
   CUDA_VISIBLE_DEVICES: "0"
-  # Безпечний CUDA-аллокатор (допустимі тільки: native | cudaMallocAsync)
+
+  # Безпечний аллокатор для Pascal; у PyTorch валідні тільки: native | cudaMallocAsync
   PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
-  # Відрізаємо «важкі» ISA на старому CPU
+
+  # Старий CPU без AVX: відрізаємо «важкі» інструкції в torch/oneDNN/glibc
   ATEN_CPU_CAPABILITY: "default"
   ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512,avx512_vnni,fma4"
-  GLIBC_TUNABLES: "glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-ERMS"
   ONEDNN_MAX_CPU_ISA: "SSE41"
-  # Менше шансів на гонки в BLAS
+  GLIBC_TUNABLES: "glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-ERMS"
+
+  # Менше гонок у BLAS
   OMP_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
   NUMEXPR_NUM_THREADS: "1"
-  # Вимикаємо xFormers (часто збірки під AVX2)
+
   XFORMERS_DISABLED: "1"
-  # Трохи менше фрагментації heap
   MALLOC_ARENA_MAX: "2"
-  # Один рядок без бекслешів — інакше argparse ламається
+
+  # ВАЖЛИВО: один рядок без бекслешів/переносів (інакше argparse ламається)
+  # fp16 на GPU; CLIP у fp32 на CPU; без smart-mem; без cudaMallocAsync; без custom nodes
   CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes"
 
 x-common-svc: &common-svc
@@ -28,20 +34,9 @@ x-common-svc: &common-svc
     context: .
     dockerfile: Dockerfile
     args:
-      # індекс для Torch cu121 (якщо використовуєш 2.3.x+cu121)
       TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
-  container_name: comfyui
-  # GPU через Compose (оф. доки)
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-  environment:
-    <<: *common-env
   command: ["/usr/local/bin/docker-entrypoint.sh"]
+  environment: *common-env
   ports:
     - "8188:8188"
   volumes:
@@ -50,6 +45,13 @@ x-common-svc: &common-svc
     - ./comfyui/output:/opt/ComfyUI/output
     - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
     - ./comfyui/user:/opt/ComfyUI/user
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
   shm_size: "2gb"
   ulimits:
     memlock: -1
@@ -65,9 +67,9 @@ x-common-svc: &common-svc
     start_period: 90s
 
 services:
-  # ====== стабільний режим
   comfyui:
     <<: *common-svc
+    container_name: comfyui
     restart: unless-stopped
     privileged: true
     security_opt:
@@ -76,32 +78,23 @@ services:
       - IPC_LOCK
       - SYS_NICE
 
-  # ====== режим діагностики (запускати замість comfyui, коли треба впіймати падіння)
   comfyui-debug:
     <<: *common-svc
     container_name: comfyui-debug
-    restart: "no"          # не перезапускаємо, щоб не втрачати стек
+    restart: "no"  # щоб не перезапускався і не ховав стек при краші
     privileged: true
     security_opt:
       - seccomp=unconfined
     cap_add:
-      - SYS_PTRACE         # для gdb/strace
+      - SYS_PTRACE
       - IPC_LOCK
       - SYS_NICE
     environment:
       <<: *common-env
-      # максимум діагностики
       PYTHONFAULTHANDLER: "1"           # дамп стеків Python на SIGSEGV
       TORCH_SHOW_CPP_STACKTRACES: "1"   # C++ стек PyTorch
       TORCH_CPP_LOG_LEVEL: "INFO"
-      CUDA_LAUNCH_BLOCKING: "1"         # синхронізує CUDA для чесних стеків
-      LIBC_FATAL_STDERR_: "1"           # glibc пише фатальні помилки у stderr
+      CUDA_LAUNCH_BLOCKING: "1"         # синхронізує CUDA → «чесні» стеки
+      LIBC_FATAL_STDERR_: "1"           # glibc пише фатальні у stderr
       # детальні логи ComfyUI
       CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes --verbose DEBUG --log-stdout"
-    ulimits:
-      core: -1             # дозволяємо core-dump (див. coredumpctl)
-      memlock: -1
-      stack: 268435456
-      nofile:
-        soft: 65536
-        hard: 65536
