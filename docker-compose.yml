@@ -37,23 +37,22 @@ services:
             - capabilities: ["gpu"]
 
     environment:
-      NVIDIA_VISIBLE_DEVICES: "all"
-      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
-      CUDA_DEVICE_ORDER: "PCI_BUS_ID"
-      CUDA_VISIBLE_DEVICES: "0"
-      LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-      ATEN_CPU_CAPABILITY: "default"
-      MKL_DEBUG_CPU_TYPE: "5"             # змушує MKL/oneDNN йти по SSE2-гілці
-      # або прибрати взагалі цей рядок, щоб лишився дефолтний native
-      PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
-      OMP_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      NUMEXPR_NUM_THREADS: "1"
-      # НЕ задавай ATEN_CPU_CAPABILITY зі значенням sse2 — PyTorch його ігнорує
-      XFORMERS_DISABLED: "1"
-      MALLOC_ARENA_MAX: "2"
-      CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none"
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_DEVICE_ORDER=PCI_BUS_ID
+      - CUDA_VISIBLE_DEVICES=0
+      - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+      - PYTORCH_CUDA_ALLOC_CONF=backend:native,max_split_size_mb:128
+      - ATEN_CPU_CAPABILITY=default
+      - ATEN_DISABLE_CPU_CAPABILITY=avx,avx2,avx512,avx512_vnni,fma4
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2,-AVX,-FMA,-AVX512F
+      - XFORMERS_DISABLED=1
+      - MALLOC_ARENA_MAX=2
+      - CLI_ARGS=--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none
 
     command: /usr/local/bin/docker-entrypoint.sh
 

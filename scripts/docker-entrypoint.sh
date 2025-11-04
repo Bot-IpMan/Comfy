@@ -269,7 +269,6 @@ if ! ${gpu_available}; then
   if [[ ${#args[@]} -gt 0 ]]; then
     filtered_args=()
     cpu_flag_present=false
-    force_fp32_present=false
     for arg in "${args[@]}"; do
       skip=false
       for flag in "${gpu_memory_flags[@]}"; do
@@ -287,10 +286,6 @@ if ! ${gpu_available}; then
         continue
       fi
 
-      if [[ "${arg}" == "--force-fp32" ]]; then
-        force_fp32_present=true
-      fi
-
       if [[ "${arg}" == "--cpu" ]]; then
         if ! $cpu_flag_present; then
           cpu_flag_present=true
@@ -304,15 +299,10 @@ if ! ${gpu_available}; then
     args=("${filtered_args[@]}")
   else
     cpu_flag_present=false
-    force_fp32_present=false
   fi
 
   if ! ${cpu_flag_present:-false}; then
     args+=(--cpu)
-  fi
-
-  if ! ${force_fp32_present:-false}; then
-    args+=(--force-fp32)
   fi
 fi
 
