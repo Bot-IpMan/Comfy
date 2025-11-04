@@ -1,77 +1,107 @@
+x-common-env: &common-env
+  NVIDIA_VISIBLE_DEVICES: "all"
+  NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+  CUDA_DEVICE_ORDER: "PCI_BUS_ID"
+  CUDA_VISIBLE_DEVICES: "0"
+  # Безпечний CUDA-аллокатор (допустимі тільки: native | cudaMallocAsync)
+  PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
+  # Відрізаємо «важкі» ISA на старому CPU
+  ATEN_CPU_CAPABILITY: "default"
+  ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512,avx512_vnni,fma4"
+  GLIBC_TUNABLES: "glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX_Fast_Unaligned_Load,-ERMS"
+  ONEDNN_MAX_CPU_ISA: "SSE41"
+  # Менше шансів на гонки в BLAS
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  # Вимикаємо xFormers (часто збірки під AVX2)
+  XFORMERS_DISABLED: "1"
+  # Трохи менше фрагментації heap
+  MALLOC_ARENA_MAX: "2"
+  # Один рядок без бекслешів — інакше argparse ламається
+  CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes"
+
+x-common-svc: &common-svc
+  image: ${COMFYUI_IMAGE:-comfyui:local}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      # індекс для Torch cu121 (якщо використовуєш 2.3.x+cu121)
+      TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+  container_name: comfyui
+  # GPU через Compose (оф. доки)
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+  environment:
+    <<: *common-env
+  command: ["/usr/local/bin/docker-entrypoint.sh"]
+  ports:
+    - "8188:8188"
+  volumes:
+    - ./comfyui/models:/opt/ComfyUI/models
+    - ./comfyui/input:/opt/ComfyUI/input
+    - ./comfyui/output:/opt/ComfyUI/output
+    - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
+    - ./comfyui/user:/opt/ComfyUI/user
+  shm_size: "2gb"
+  ulimits:
+    memlock: -1
+    stack: 268435456
+    nofile:
+      soft: 65536
+      hard: 65536
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ > /dev/null || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 90s
+
 services:
+  # ====== стабільний режим
   comfyui:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${COMFYUI_IMAGE:-comfyui:local}
-    container_name: comfyui
+    <<: *common-svc
     restart: unless-stopped
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - IPC_LOCK
+      - SYS_NICE
 
-    # дає Docker'у GPU у звичайному (не swarm) compose
-    device_requests:
-      - driver: nvidia
-        count: 1
-        capabilities: ["gpu"]
-
+  # ====== режим діагностики (запускати замість comfyui, коли треба впіймати падіння)
+  comfyui-debug:
+    <<: *common-svc
+    container_name: comfyui-debug
+    restart: "no"          # не перезапускаємо, щоб не втрачати стек
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - SYS_PTRACE         # для gdb/strace
+      - IPC_LOCK
+      - SYS_NICE
     environment:
-      # видимість та можливості NVIDIA
-      NVIDIA_VISIBLE_DEVICES: "all"
-      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
-      CUDA_DEVICE_ORDER: "PCI_BUS_ID"
-      CUDA_VISIBLE_DEVICES: "0"
-
-      # критично для LXC: nvidia-container-runtime без cgroups
-      # (ти вже маєш no-cgroups=true в /etc/nvidia-container-runtime/config.toml) 
-      # джерело: обхід для LXC/LXD :contentReference[oaicite:8]{index=8}
-
-      # ↓ усе з Dockerfile продубльовано, щоб було видно й тут:
-      GLIBC_TUNABLES: "glibc.cpu.hwcaps=-AVX_Usable,-AVX2_Usable,-AVX_Fast_Unaligned_Load,-ERMS"
-      ONEDNN_MAX_CPU_ISA: "SSE41"
-      ATEN_CPU_CAPABILITY: "default"
-      ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512,avx512_vnni,fma4"
-      OMP_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      NUMEXPR_NUM_THREADS: "1"
-      PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
-      XFORMERS_DISABLED: "1"
-      PYTHONNOUSERSITE: "1"
-
-      # Прапори запуску ComfyUI — мінімальний тиск на VRAM/CPU
-      CLI_ARGS: >-
-        --listen --port 8188
-        --lowvram --disable-smart-memory
-        --preview-method none
-        --fp32-text-enc
-        --disable-cuda-malloc
-        --disable-all-custom-nodes
-
-    # важливо: без зайвих пробілів/слешів, щоб не зламати argparse
-    command: ["/usr/local/bin/docker-entrypoint.sh"]
-
-    # зручні мапінги
-    volumes:
-      - ./comfyui/models:/opt/ComfyUI/models
-      - ./comfyui/input:/opt/ComfyUI/input
-      - ./comfyui/output:/opt/ComfyUI/output
-      - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
-      - ./comfyui/user:/opt/ComfyUI/user
-
-    ports:
-      - "8188:8188"
-
-    # стабільність
-    shm_size: "2gb"
+      <<: *common-env
+      # максимум діагностики
+      PYTHONFAULTHANDLER: "1"           # дамп стеків Python на SIGSEGV
+      TORCH_SHOW_CPP_STACKTRACES: "1"   # C++ стек PyTorch
+      TORCH_CPP_LOG_LEVEL: "INFO"
+      CUDA_LAUNCH_BLOCKING: "1"         # синхронізує CUDA для чесних стеків
+      LIBC_FATAL_STDERR_: "1"           # glibc пише фатальні помилки у stderr
+      # детальні логи ComfyUI
+      CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes --verbose DEBUG --log-stdout"
     ulimits:
+      core: -1             # дозволяємо core-dump (див. coredumpctl)
       memlock: -1
       stack: 268435456
       nofile:
         soft: 65536
         hard: 65536
-
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
