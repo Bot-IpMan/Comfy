@@ -40,7 +40,7 @@ x-common-svc: &common-svc
   ports:
     - "8188:8188"
   volumes:
-    - ./comfyui/models:/opt/ComfyUI/models
+    - ./comfyui/models:/opt/ComfyUI/src/models
     - ./comfyui/input:/opt/ComfyUI/input
     - ./comfyui/output:/opt/ComfyUI/output
     - ./comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
