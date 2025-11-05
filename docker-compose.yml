@@ -74,9 +74,8 @@ services:
       - seccomp=unconfined
     cap_add:
       - IPC_LOCK
-      - SYS_NICE    
+      - SYS_NICE
     ports: ["8188:8188"]
-    profiles: ["default"]
     
 
   comfyui-debug:
