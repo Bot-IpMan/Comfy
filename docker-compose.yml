@@ -6,10 +6,11 @@ x-common-env: &common-env
   CUDA_DEVICE_ORDER: "PCI_BUS_ID"
   CUDA_VISIBLE_DEVICES: "0"
 
-  # Pascal: примусово рідний аллокатор PyTorch (у 2.3.x валідні: native|cudaMallocAsync)
-  PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
+  # ЄДИНИЙ бекенд аллокатора для всього процесу (жодних тумблерів у CLI)
+  # Узгоджено з PyTorch 2.4+.
+  PYTORCH_CUDA_ALLOC_CONF: "backend:cudaMallocAsync,max_split_size_mb:128"
 
-  # Старий CPU без AVX → відрізаємо «важкі» ISA, щоб уникнути крашів у CPU-путі
+  # Старий CPU без AVX → вимикаємо важкі інструкції, фіксимо oneDNN
   ATEN_CPU_CAPABILITY: "default"
   ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512,avx512_vnni,fma4"
   ONEDNN_MAX_CPU_ISA: "SSE41"
@@ -24,20 +25,32 @@ x-common-env: &common-env
   XFORMERS_DISABLED: "1"
   MALLOC_ARENA_MAX: "2"
 
-  # ВАЖЛИВО: один суцільний рядок без бекслешів
-  # Усе на GPU, FP16 на UNet/VAE/CLIP, без кастом-нодів, без прев’ю, mmap ваг
-  CLI_ARGS: "--listen --port 8188 --gpu-only --fp16-text-enc --fp16-vae --fp16-unet --disable-smart-memory --disable-all-custom-nodes --preview-method none --mmap-torch-files --reserve-vram 256"
+  # ВАЖЛИВО: жодних --gpu-only, і жодного --disable-cuda-malloc
+  # Мінімум для Pascal 4GB: fp32 для CLIP (CPU), fp16 UNet/VAE, lowvram
+  CLI_ARGS: >-
+    --listen --port 8188
+    --lowvram
+    --cuda-malloc
+    --fp32-text-enc
+    --fp16-unet
+    --fp16-vae
+    --disable-smart-memory
+    --disable-all-custom-nodes
+    --preview-method none
+    --mmap-torch-files
+    --reserve-vram 256
 
 x-common-svc: &common-svc
   image: ${COMFYUI_IMAGE:-comfyui:local}
   build:
     context: .
     dockerfile: Dockerfile
-    args:
-      TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
   command: ["/usr/local/bin/docker-entrypoint.sh"]
   environment: *common-env
+  ports:
+    - "8188:8188"
   volumes:
+    # ВАЖЛИВО: монтуємо в /opt/ComfyUI/src/models (саме так ComfyUI їх читає)
     - ./comfyui/models:/opt/ComfyUI/src/models
     - ./comfyui/input:/opt/ComfyUI/input
     - ./comfyui/output:/opt/ComfyUI/output
@@ -54,9 +67,7 @@ x-common-svc: &common-svc
   ulimits:
     memlock: -1
     stack: 268435456
-    nofile:
-      soft: 65536
-      hard: 65536
+    nofile: { soft: 65536, hard: 65536 }
   healthcheck:
     test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ > /dev/null || exit 1"]
     interval: 30s
@@ -70,26 +81,19 @@ services:
     container_name: comfyui
     restart: unless-stopped
     privileged: true
-    security_opt:
-      - seccomp=unconfined
-    cap_add:
-      - IPC_LOCK
-      - SYS_NICE
-    ports:
-      - "8188:8188"
+    security_opt: ["seccomp=unconfined"]
+    cap_add: ["IPC_LOCK","SYS_NICE"]
 
+  # Опційно: дебаг-профіль на сусідньому порту
   comfyui-debug:
     <<: *common-svc
     container_name: comfyui-debug
     profiles: ["debug"]
-    restart: "no"        # не перезапускаємо — зручно ловити стек/логи
+    ports: ["8189:8188"]
+    restart: "no"
     privileged: true
-    security_opt:
-      - seccomp=unconfined
-    cap_add:
-      - SYS_PTRACE
-      - IPC_LOCK
-      - SYS_NICE
+    security_opt: ["seccomp=unconfined"]
+    cap_add: ["SYS_PTRACE","IPC_LOCK","SYS_NICE"]
     environment:
       <<: *common-env
       PYTHONFAULTHANDLER: "1"
@@ -97,7 +101,17 @@ services:
       TORCH_CPP_LOG_LEVEL: "INFO"
       CUDA_LAUNCH_BLOCKING: "1"
       LIBC_FATAL_STDERR_: "1"
-      # докладні логи ComfyUI
-      CLI_ARGS: "--listen --port 8188 --gpu-only --fp16-text-enc --fp16-vae --fp16-unet --disable-smart-memory --disable-all-custom-nodes --preview-method none --mmap-torch-files --reserve-vram 256 --verbose DEBUG --log-stdout"
-    ports:
-      - "8189:8188"
+      # Детальні логи Comfy
+      CLI_ARGS: >-
+        --listen --port 8188
+        --lowvram
+        --cuda-malloc
+        --fp32-text-enc
+        --fp16-unet
+        --fp16-vae
+        --disable-smart-memory
+        --disable-all-custom-nodes
+        --preview-method none
+        --mmap-torch-files
+        --reserve-vram 256
+        --verbose DEBUG --log-stdout
