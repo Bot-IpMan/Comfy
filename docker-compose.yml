@@ -1,3 +1,4 @@
+name: comfy
 x-common-env: &common-env
   NVIDIA_VISIBLE_DEVICES: "all"
   NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
