@@ -1,309 +1,153 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-cd /opt/ComfyUI
-
-# Агресивна оптимізація пам'яті
-export MALLOC_ARENA_MAX=2
-export MALLOC_MMAP_THRESHOLD_=131072
-export MALLOC_TRIM_THRESHOLD_=131072
-export MALLOC_TOP_PAD_=131072
-export MALLOC_MMAP_MAX_=65536
-
-# Python оптимізації
+# === Базові налаштування пам'яті/GLIBC/BLAS (безпечні дефолти) ===
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
 export PYTHONHASHSEED=0
 export PYTHONMALLOC=malloc
 
-ensure_source_tree() {
-  if [[ -f main.py ]]; then
-    return
+# Де лежить ComfyUI (джерела мають бути тут: main.py)
+COMFY_ROOT="/opt/ComfyUI/src"
+VENV_PY="/opt/ComfyUI/venv/bin/python"
+
+cd "$COMFY_ROOT" 2>/dev/null || {
+  echo "[entrypoint] ComfyUI sources not found in $COMFY_ROOT" >&2
+  echo "[entrypoint] Please check Dockerfile COPY or bind mount to $COMFY_ROOT" >&2
+  exit 1
+}
+
+# --- Корисний лог: поточні моделі/шляхи ---
+echo "[entrypoint] CWD=$PWD"
+echo "[entrypoint] USER=$(id -u):$(id -g)"
+
+# === Обираємо бекенд аллокатора ДО першого імпорту torch ===
+# Для Pascal (compute capability 6.x) потрібен 'native'; для >=7.0 — 'cudaMallocAsync'.
+choose_allocator() {
+  local cc=""; local cc_major=""; local backend="native"
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    # compute_cap повертає типу "6.1" або "7.5"
+    cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || true)"
   fi
 
-  local repo="${COMFYUI_REPO:-https://github.com/comfyanonymous/ComfyUI.git}"
-  local ref="${COMFYUI_REF:-master}"
+  if [[ -n "$cc" ]]; then
+    cc_major="${cc%%.*}"
+  else
+    # якщо не можемо визначити — залишаємо safe default для Pascal
+    cc_major="6"
+  fi
 
-  echo "[docker-entrypoint] ComfyUI sources missing, cloning ${repo} (${ref})" >&2
+  if [[ "$cc_major" =~ ^[0-9]+$ ]] && (( cc_major >= 7 )); then
+    backend="cudaMallocAsync"
+  else
+    backend="native"
+  fi
 
-  local tmp_dir
-  tmp_dir=$(mktemp -d)
-
-  git clone --depth 1 --branch "${ref}" "${repo}" "${tmp_dir}"
-  (cd "${tmp_dir}" && git submodule update --init --recursive)
-
-  shopt -s dotglob
-  for item in "${tmp_dir}"/*; do
-    local name
-    name=$(basename "${item}")
-    if [[ "${name}" == ".git" ]]; then
-      continue
-    fi
-    if [[ -e "${name}" ]]; then
-      continue
-    fi
-    cp -r "${item}" "${name}"
-  done
-  shopt -u dotglob
-
-  rm -rf "${tmp_dir}"
+  # Чистимо можливі старі значення і задаємо обране
+  export PYTORCH_CUDA_ALLOC_CONF="backend:${backend},max_split_size_mb:${PYTORCH_MAX_SPLIT_SIZE_MB:-128}"
+  echo "[entrypoint] Selected CUDA allocator backend: ${backend} (CC major=${cc_major})"
 }
 
-ensure_source_tree
+choose_allocator
 
-# Backwards compatibility: honour legacy PYTORCH_ALLOC_CONF values when the
-# CUDA-specific variant is missing.
-if [[ -n "${PYTORCH_ALLOC_CONF:-}" && -z "${PYTORCH_CUDA_ALLOC_CONF:-}" ]]; then
-  export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_ALLOC_CONF}"
-fi
-
-# Ensure ComfyUI uses a CPU fallback when CUDA is unavailable
-ensure_cpu_fallback_patch() {
-  python - <<'PY'
-from pathlib import Path
-
-path = Path("comfy/model_management.py")
-if not path.exists():
-    raise SystemExit(0)
-
-code = path.read_text()
-needle = "return torch.device(torch.cuda.current_device())"
-
-if needle not in code:
-    raise SystemExit(0)
-
-import re
-
-match = re.search(r"^(\s*)" + re.escape(needle), code, flags=re.MULTILINE)
-if not match:
-    raise SystemExit(0)
-
-indent = match.group(1)
-
-existing_patch = re.escape("\n".join((
-    f"{indent}try:",
-    f"{indent}    current_device = torch.cuda.current_device()",
-    f"{indent}except Exception:  # pragma: no cover - safety net for non-CUDA environments",
-    f"{indent}    return torch.device(\"cpu\")",
-    f"{indent}return torch.device(current_device)"
-)))
-
-if re.search(existing_patch, code):
-    raise SystemExit(0)
-
-replacement = "\n".join((
-    f"{indent}try:",
-    f"{indent}    current_device = torch.cuda.current_device()",
-    f"{indent}except Exception:  # pragma: no cover - safety net for non-CUDA environments",
-    f"{indent}    return torch.device(\"cpu\")",
-    f"{indent}return torch.device(current_device)"
-))
-
-path.write_text(code.replace(f"{indent}{needle}", replacement))
-PY
-}
-
-ensure_cpu_fallback_patch || true
-
-ensure_allocator_patch() {
-  python - <<'PY'
-from pathlib import Path
-
-path = Path("comfy/model_management.py")
-if not path.exists():
-    raise SystemExit(0)
-
-code = path.read_text()
-
-marker = "legacy_device = any(torch.cuda.get_device_capability"
-if marker in code:
-    raise SystemExit(0)
-
-import re
-
-pattern = re.compile(r"^(\s*)torch\\.cuda\\.memory\\.change_current_allocator\((\"|')cudaMallocAsync(\"|')\)", re.MULTILINE)
-
-def replace(match):
-    indent = match.group(1)
-    return "\n".join((
-        f"{indent}if torch.cuda.is_available():",
-        f"{indent}    try:",
-        f"{indent}        legacy_device = any(torch.cuda.get_device_capability(i)[0] < 7 for i in range(torch.cuda.device_count()))",
-        f"{indent}    except Exception:",
-        f"{indent}        legacy_device = False",
-        f"{indent}    if legacy_device:",
-        f"{indent}        torch.cuda.memory.change_current_allocator(\"cudaMalloc\")",
-        f"{indent}    else:",
-        f"{indent}        torch.cuda.memory.change_current_allocator(\"cudaMallocAsync\")",
-    )) + "\n"
-
-new_code, count = pattern.subn(replace, code)
-
-if count:
-    path.write_text(new_code)
-PY
-}
-
-ensure_allocator_patch || true
-
-# Очищуємо кеш перед стартом (якщо можливо)
-sync
-if [[ -f /proc/sys/vm/drop_caches && -w /proc/sys/vm/drop_caches ]]; then
+# === Скидання кешів (не критично, просто інфо) ===
+sync || true
+if [[ -w /proc/sys/vm/drop_caches ]]; then
   echo 3 > /proc/sys/vm/drop_caches || true
 else
-  echo "[docker-entrypoint] Skipping cache drop: /proc/sys/vm/drop_caches is not writable" >&2
+  echo "[entrypoint] Skipping cache drop: /proc/sys/vm/drop_caches is not writable"
 fi
 
-check_cuda_available() {
-  if ! command -v python >/dev/null 2>&1; then
-    return 1
+# === Формуємо аргументи ComfyUI з CLI_ARGS та прибираємо конфлікти ===
+# Взаємовиключні: --gpu-only | --highvram | --normalvram | --lowvram | --novram | --cpu
+sanitize_cli_args() {
+  local -a in_args=("$@")
+  local -a out=()
+  local chosen_vram=""
+  local need_fp32_text_enc=true
+
+  # прапорці, які заборонено міксувати/взагалі змінювати аллокатор зсередини
+  local drop_flags=(
+    "--cuda-malloc" "--disable-cuda-malloc"
+  )
+
+  for a in "${in_args[@]}"; do
+    # Викидаємо прапорці, які змінюють аллокатор у рантаймі ComfyUI
+    for bad in "${drop_flags[@]}"; do
+      if [[ "$a" == "$bad" ]]; then
+        echo "[entrypoint] Dropping flag '$a' (allocator controlled via env only)"
+        continue 2
+      fi
+    done
+
+    case "$a" in
+      --gpu-only|--highvram|--normalvram|--lowvram|--novram|--cpu)
+        if [[ -z "$chosen_vram" ]]; then
+          chosen_vram="$a"
+          out+=("$a")
+        else
+          echo "[entrypoint] Removing extra VRAM mode '$a' (already have '$chosen_vram')"
+        fi
+        ;;
+      --fp32-text-enc) need_fp32_text_enc=false; out+=("$a");;
+      *) out+=("$a");;
+    esac
+  done
+
+  # Якщо жодного режиму не задано — дефолт для 4GB карт: --lowvram
+  if [[ -z "$chosen_vram" ]]; then
+    out+=("--lowvram")
+    echo "[entrypoint] No VRAM mode specified → adding --lowvram"
   fi
 
-  python - <<'PY'
-import sys
+  # На Pascal/старих CPU стабільніше залишити текстовий енкодер у FP32
+  if $need_fp32_text_enc; then
+    out+=("--fp32-text-enc")
+  fi
 
-try:
-    import torch
-except Exception:
-    sys.exit(1)
-
-try:
-    available = torch.cuda.is_available() and torch.cuda.device_count() > 0
-except Exception:
-    available = False
-
-sys.exit(0 if available else 1)
-PY
+  printf '%s\n' "${out[@]}"
 }
 
-needs_legacy_allocator() {
-  if ! command -v python >/dev/null 2>&1; then
-    return 1
-  fi
-
-  python - <<'PY'
-import sys
-
-try:
-    import torch
-except Exception:
-    sys.exit(1)
-
-if not torch.cuda.is_available():
-    sys.exit(1)
-
-try:
-    device_count = torch.cuda.device_count()
-except Exception:
-    sys.exit(1)
-
-if device_count == 0:
-    sys.exit(1)
-
-for index in range(device_count):
-    try:
-        major, _ = torch.cuda.get_device_capability(index)
-    except Exception:
-        continue
-    if major < 7:
-        sys.exit(0)
-
-sys.exit(1)
-PY
-}
-
-declare -a args
-if [[ $# -gt 0 ]]; then
-  if [[ "$1" == -* ]]; then
-    args=("$@")
-  else
-    exec "$@"
-  fi
+# Аргументи з ENV або дефолтні
+declare -a ARGS=()
+if [[ $# -gt 0 && "$1" == -* ]]; then
+  ARGS=("$@")
 elif [[ -n "${CLI_ARGS:-}" ]]; then
   # shellcheck disable=SC2206
-  args=( ${CLI_ARGS} )
-fi
-
-if [[ ${#args[@]} -eq 0 ]]; then
-  args=(--listen --port 8188)
-fi
-
-gpu_available=false
-if check_cuda_available; then
-  gpu_available=true
+  ARGS=( ${CLI_ARGS} )
 else
-  gpu_available=false
+  ARGS=( --listen --port 8188 )
 fi
 
-if ${gpu_available}; then
-  if needs_legacy_allocator; then
-    base_conf="${PYTORCH_CUDA_ALLOC_CONF:-${PYTORCH_ALLOC_CONF:-}}"
-    sanitized=$(PYTORCH_CONF_RAW="${base_conf}" python - <<'PY'
-import os
+# Нормалізуємо
+mapfile -t ARGS < <(sanitize_cli_args "${ARGS[@]}")
 
-conf = os.environ.get("PYTORCH_CONF_RAW", "")
-parts = []
-for raw in conf.split(","):
-    item = raw.strip()
-    if not item:
-        continue
-    key = item.split(":", 1)[0].strip().lower()
-    if key in {"backend", "expandable_segments"}:
-        continue
-    parts.append(item)
-
-print(",".join(parts))
+# Якщо GPU реально недоступний — прибираємо усі GPU-режими і ставимо --cpu
+if ! "$VENV_PY" - <<'PY' >/dev/null 2>&1
+import sys
+try:
+    import torch
+    sys.exit(0 if (torch.cuda.is_available() and torch.cuda.device_count()>0) else 1)
+except Exception:
+    sys.exit(1)
 PY
-)
-    if [[ -n "${sanitized}" ]]; then
-      export PYTORCH_CUDA_ALLOC_CONF="backend:cudaMalloc,${sanitized}"
-    else
-      export PYTORCH_CUDA_ALLOC_CONF="backend:cudaMalloc"
-    fi
-    echo "[docker-entrypoint] Falling back to legacy cudaMalloc allocator (compute capability < 7.0)" >&2
-  fi
+then
+  echo "[entrypoint] CUDA not available → forcing --cpu"
+  # фільтруємо і додаємо --cpu (рівно один)
+  tmp=(); have_cpu=false
+  for a in "${ARGS[@]}"; do
+    case "$a" in
+      --gpu-only|--highvram|--normalvram|--lowvram|--novram) continue ;;
+      --cpu) have_cpu=true ;;
+    esac
+    tmp+=("$a")
+  done
+  ARGS=("${tmp[@]}")
+  $have_cpu || ARGS+=(--cpu)
 fi
 
-if ! ${gpu_available}; then
-  # Remove GPU-specific memory presets that conflict with --cpu and ensure
-  # we only pass a single --cpu flag.
-  gpu_memory_flags=(--gpu-only --highvram --normalvram --lowvram --novram)
-  if [[ ${#args[@]} -gt 0 ]]; then
-    filtered_args=()
-    cpu_flag_present=false
-    for arg in "${args[@]}"; do
-      skip=false
-      for flag in "${gpu_memory_flags[@]}"; do
-        if [[ "${arg}" == "${flag}" ]]; then
-          skip=true
-          break
-        fi
-      done
-      if $skip; then
-        continue
-      fi
+echo "[entrypoint] Final CLI args: ${ARGS[*]}"
+echo "[entrypoint] PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF}"
 
-      if [[ "${arg}" == "--force-fp16" ]]; then
-        # Running on CPU makes fp16 impractical; drop conflicting flag.
-        continue
-      fi
-
-      if [[ "${arg}" == "--cpu" ]]; then
-        if ! $cpu_flag_present; then
-          cpu_flag_present=true
-          filtered_args+=("${arg}")
-        fi
-        continue
-      fi
-
-      filtered_args+=("${arg}")
-    done
-    args=("${filtered_args[@]}")
-  else
-    cpu_flag_present=false
-  fi
-
-  if ! ${cpu_flag_present:-false}; then
-    args+=(--cpu)
-  fi
-fi
-
-exec python -u main.py "${args[@]}"
+# === Запуск ComfyUI ===
+exec "$VENV_PY" -u main.py "${ARGS[@]}"
