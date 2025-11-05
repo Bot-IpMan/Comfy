@@ -1,14 +1,13 @@
 name: comfy
+
 x-common-env: &common-env
   NVIDIA_VISIBLE_DEVICES: "all"
   NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
   CUDA_DEVICE_ORDER: "PCI_BUS_ID"
   CUDA_VISIBLE_DEVICES: "0"
 
-  # Безпечний аллокатор для Pascal; у PyTorch валідні тільки: native | cudaMallocAsync
+  # Pascal + старий CPU: безпечні аллокатори й відсікання AVX/oneDNN
   PYTORCH_CUDA_ALLOC_CONF: "backend:native,max_split_size_mb:128"
-
-  # Старий CPU без AVX: відрізаємо «важкі» інструкції в torch/oneDNN/glibc
   ATEN_CPU_CAPABILITY: "default"
   ATEN_DISABLE_CPU_CAPABILITY: "avx,avx2,avx512,avx512_vnni,fma4"
   ONEDNN_MAX_CPU_ISA: "SSE41"
@@ -20,12 +19,15 @@ x-common-env: &common-env
   OPENBLAS_NUM_THREADS: "1"
   NUMEXPR_NUM_THREADS: "1"
 
+  # Вимикаємо експериментальне
   XFORMERS_DISABLED: "1"
   MALLOC_ARENA_MAX: "2"
+  PYTHONUNBUFFERED: "1"
 
-  # ВАЖЛИВО: один рядок без бекслешів/переносів (інакше argparse ламається)
-  # fp16 на GPU; CLIP у fp32 на CPU; без smart-mem; без cudaMallocAsync; без custom nodes
-  CLI_ARGS: "--listen --port 8188 --gpu-only --lowvram --fp16-text-enc --fp16-vae --fp16-unet --disable-smart-memory --disable-all-custom-nodes --preview-method none"
+  # ВАЖЛИВО: один рядок без бекслешів!
+  # GPU-only + lowvram; CLIP у FP32 на CPU (прибирає «Floating point exception»);
+  # вимикаємо smart-mem та cudaMallocAsync; жодних custom nodes
+  CLI_ARGS: "--listen --port 8188 --gpu-only --lowvram --fp32-text-enc --fp16-vae --fp16-unet --disable-smart-memory --disable-cuda-malloc --disable-all-custom-nodes --preview-method none --mmap-torch-files --reserve-vram 256"
 
 x-common-svc: &common-svc
   image: ${COMFYUI_IMAGE:-comfyui:local}
@@ -33,12 +35,13 @@ x-common-svc: &common-svc
     context: .
     dockerfile: Dockerfile
     args:
+      # Твій контейнер збирається з torch/cu121; змінюй за потреби
       TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
   command: ["/usr/local/bin/docker-entrypoint.sh"]
   environment: *common-env
-  ports:
-    - "8188:8188"
+  ports: ["8188:8188"]
   volumes:
+    # Мапимо відразу в /opt/ComfyUI/src/models (новий лейаут у твоєму образі)
     - ./comfyui/models:/opt/ComfyUI/src/models
     - ./comfyui/input:/opt/ComfyUI/input
     - ./comfyui/output:/opt/ComfyUI/output
@@ -55,9 +58,7 @@ x-common-svc: &common-svc
   ulimits:
     memlock: -1
     stack: 268435456
-    nofile:
-      soft: 65536
-      hard: 65536
+    nofile: { soft: 65536, hard: 65536 }
   healthcheck:
     test: ["CMD-SHELL", "curl -fsS http://localhost:8188/ > /dev/null || exit 1"]
     interval: 30s
@@ -71,33 +72,28 @@ services:
     container_name: comfyui
     restart: unless-stopped
     privileged: true
-    security_opt:
-      - seccomp=unconfined
-    cap_add:
-      - IPC_LOCK
-      - SYS_NICE
+    security_opt: ["seccomp=unconfined"]
+    cap_add: ["IPC_LOCK", "SYS_NICE"]
+    # Щоб не змагатися за порт із debug
     ports: ["8188:8188"]
-    
 
+  # Увімкнення: `docker compose --profile debug up -d`
   comfyui-debug:
     <<: *common-svc
     container_name: comfyui-debug
-    ports: ["8189:8188"]
     profiles: ["debug"]
-    restart: "no"  # щоб не перезапускався і не ховав стек при краші
+    # окремий порт назовні, всередині все одно 8188
+    ports: ["8189:8188"]
+    restart: "no"
     privileged: true
-    security_opt:
-      - seccomp=unconfined
-    cap_add:
-      - SYS_PTRACE
-      - IPC_LOCK
-      - SYS_NICE
+    security_opt: ["seccomp=unconfined"]
+    cap_add: ["SYS_PTRACE", "IPC_LOCK", "SYS_NICE"]
     environment:
       <<: *common-env
-      PYTHONFAULTHANDLER: "1"           # дамп стеків Python на SIGSEGV
-      TORCH_SHOW_CPP_STACKTRACES: "1"   # C++ стек PyTorch
+      PYTHONFAULTHANDLER: "1"
+      TORCH_SHOW_CPP_STACKTRACES: "1"
       TORCH_CPP_LOG_LEVEL: "INFO"
-      CUDA_LAUNCH_BLOCKING: "1"         # синхронізує CUDA → «чесні» стеки
-      LIBC_FATAL_STDERR_: "1"           # glibc пише фатальні у stderr
-      # детальні логи ComfyUI
-      CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes --verbose DEBUG --log-stdout"
+      CUDA_LAUNCH_BLOCKING: "1"
+      LIBC_FATAL_STDERR_: "1"
+      # більш детальні логи
+      CLI_ARGS: "--listen --port 8188 --gpu-only --lowvram --fp32-text-enc --fp16-vae --fp16-unet --disable-smart-memory --disable-cuda-malloc --disable-all-custom-nodes --preview-method none --mmap-torch-files --reserve-vram 256 --verbose DEBUG --log-stdout"
