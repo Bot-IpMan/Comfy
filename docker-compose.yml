@@ -24,7 +24,7 @@ x-common-env: &common-env
 
   # ВАЖЛИВО: один рядок без бекслешів/переносів (інакше argparse ламається)
   # fp16 на GPU; CLIP у fp32 на CPU; без smart-mem; без cudaMallocAsync; без custom nodes
-  CLI_ARGS: "--listen --port 8188 --lowvram --disable-smart-memory --disable-cuda-malloc --fp32-text-enc --preview-method none --disable-all-custom-nodes"
+  CLI_ARGS: "--listen --port 8188 --gpu-only --lowvram --fp16-text-enc --fp16-vae --fp16-unet --disable-smart-memory --disable-all-custom-nodes --preview-method none"
 
 x-common-svc: &common-svc
   image: ${COMFYUI_IMAGE:-comfyui:local}
