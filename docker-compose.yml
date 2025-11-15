@@ -27,18 +27,18 @@ x-common-env: &common-env
 
   # ВАЖЛИВО: жодних --gpu-only, і жодного --disable-cuda-malloc
   # Мінімум для Pascal 4GB: fp32 для CLIP (CPU), fp16 UNet/VAE, lowvram
-  CLI_ARGS: >-
-    --listen --port 8188
-    --lowvram
-    --cuda-malloc
-    --fp32-text-enc
-    --fp16-unet
-    --fp16-vae
-    --disable-smart-memory
-    --disable-all-custom-nodes
-    --preview-method none
-    --mmap-torch-files
-    --reserve-vram 256
+  #CLI_ARGS: >-
+  #  --listen --port 8188
+  #  --lowvram
+  #  --cuda-malloc
+  #  --fp32-text-enc
+  #  --fp16-unet
+  #  --fp16-vae
+  #  --disable-smart-memory
+  #  --disable-all-custom-nodes
+  #  --preview-method none
+  #  --mmap-torch-files
+  #  --reserve-vram 256
 
 x-common-svc: &common-svc
   image: ${COMFYUI_IMAGE:-comfyui:local}
